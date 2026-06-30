@@ -20,9 +20,7 @@ def main():
         dest="command", help="Available commands"
     )
 
-    subparsers.add_parser(
-        "serve", help="Starts the agent server"
-    )
+    subparsers.add_parser("serve", help="Starts the agent server")
 
     subparsers.add_parser("tui", help="Launches the terminal interface")
 
