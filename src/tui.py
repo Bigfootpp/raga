@@ -48,7 +48,7 @@ class MessageHistory(Container):
 class InputRow(Horizontal):
     def compose(self) -> ComposeResult:
         yield Static("> ", id="prompt-char")
-        yield Input(placeholder="Ask RAGA something...", id="user-input")
+        yield Input(placeholder="Ask RAGA something...", id="user-input").focus()
 
 class RagaTUI(App):
     history: list[str] = []
