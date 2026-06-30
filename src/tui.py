@@ -39,9 +39,6 @@ class UserMessage(Container):
         yield Label(self.text, classes="message-content")
 
 class MessageHistory(Container):
-    def add_message(self, text: str):
-        self.mount(UserMessage(text))
-    
     def update_history(self, history_list: list[str]) -> None:
         for message_widget in self.query(UserMessage):
             message_widget.remove()
