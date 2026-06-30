@@ -9,16 +9,19 @@ class Message:
             "content": self.input
         }
 
-class UserMessage(Message):
+class UserContent(Message):
     def __init__(self, input: str):
         super().__init__("user", input)
 
-class AgentMessage(Message):
+class AgentContent(Message):
     def __init__(self, input: str):
         super().__init__("assistant", input)
 
 class Session:
     def __init__(self, history: list[Message]):
+        self.history = history
+    
+    def load_history(self, history: list[Message]):
         self.history = history
     
     def add_message(self, message: Message):
