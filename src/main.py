@@ -1,5 +1,5 @@
 import argparse
-from tui import RagaTUI
+from client.tui.tui import RagaTUI
 import sys
 
 def start_server():
