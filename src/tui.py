@@ -21,6 +21,9 @@ LOGO = r"""
 """
 
 class InfoBox(Container):
+    def __init__(self, id="info-box", **kwargs):
+        super().__init__(id=id, **kwargs)
+
     def compose(self) -> ComposeResult:
         self.border_title = "RAGA - Adaptive agent"
         with Vertical(id="left-pane"):
@@ -31,19 +34,36 @@ class InfoBox(Container):
 
 class UserMessage(Container):
     def __init__(self, text: str, **kwargs) -> None:
-        super().__init__(classes="user-message-box", **kwargs)
+        super().__init__(classes="message-box", **kwargs)
         self.text = text
 
     def compose(self) -> ComposeResult:
-        yield Label("USER", classes="message-sender")
-        yield Label(self.text, classes="message-content")
+        yield Label("USER", classes="user-message-sender")
+        yield Label(self.text, classes="user-message-content")
+
+class AgentMessage(Container):
+    def __init__(self, text: str, **kwargs) -> None:
+        super().__init__(classes="message-box", **kwargs)
+        self.text = text
+
+    def compose(self) -> ComposeResult:
+        yield Label("AGENT", classes="agent-message-sender")
+        yield Label(self.text, classes="agent-message-content")
 
 class MessageHistory(Container):
+    def __init__(self, id="message-history", **kwargs):
+        super().__init__(id=id, **kwargs)
+
     def update_history(self, history_list: list[str]) -> None:
         for message_widget in self.query(UserMessage):
             message_widget.remove()
+
+        for message_widget in self.query(AgentMessage):
+            message_widget.remove()
+
         for text in history_list:
             self.mount(UserMessage(text))
+            self.mount(AgentMessage(text))
     
 class InputRow(Horizontal):
     def compose(self) -> ComposeResult:
@@ -56,8 +76,8 @@ class RagaTUI(App):
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="main-scroll"):
-            yield InfoBox(id="info-box")
-            yield MessageHistory(id="message-history")
+            yield InfoBox()
+            yield MessageHistory()
         with Horizontal(id="status-bar"):
             yield Static(" ⎈ RAGA ", id="status-badge")
             yield Static(" TODO", id="status-metrics") # Prototype design: (ctx --  |  [░░░░░░░░░░]  |  14s  |  🌐 0s)
