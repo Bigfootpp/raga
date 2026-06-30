@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raga"
+version = "0.1.0"
+description = "RAGA - Adaptive Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=8.2.7",
+    "uvicorn>=0.49.0",
+    "fastapi>=0.138.2"
+]
+
+[project.scripts]
+raga = "main:main"
