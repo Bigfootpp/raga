@@ -1,9 +1,15 @@
 import argparse
 from client.tui.tui import RagaTUI
 import sys
+import uvicorn
 
 def start_server():
-    print("Starting Raga server...")
+    uvicorn.run(
+        "gateway.server:app",
+        host="127.0.0.1", 
+        port=8000, 
+        reload=True
+    )
 
 
 def start_tui():
