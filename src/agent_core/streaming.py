@@ -1,7 +1,7 @@
 from typing import AsyncIterator
 
-class Chunk:
-    def __init__(self, type: str, data):
+class Event:
+    def __init__(self, type: str, data: dict):
         self.type = type
         self.data = data
     
@@ -14,20 +14,24 @@ class Chunk:
     def __str__(self) -> str:
         return str(self.to_dict())
 
-class ResponseChunk(Chunk):
+class ResponseChunkEvent(Event):
     def __init__(self, content: str):
-        super().__init__("response", content)
+        super().__init__("response", {
+            "chunk": content
+        })
 
-class ThoughtChunk(Chunk):
+class ThoughtChunkEvent(Event):
     def __init__(self, content: str):
-        super().__init__("thought", content)
+        super().__init__("thought", {
+            "chunk": content
+        })
 
 class Stream:
     def __init__(self):
         pass
 
-    async def __aiter__(self) -> AsyncIterator[Chunk]:
-        yield ResponseChunk("This")
-        yield ResponseChunk(" is")
-        yield ResponseChunk(" a")
-        yield ResponseChunk(" test")
+    async def __aiter__(self) -> AsyncIterator[Event]:
+        yield ResponseChunkEvent("This")
+        yield ResponseChunkEvent(" is")
+        yield ResponseChunkEvent(" a")
+        yield ResponseChunkEvent(" test")
