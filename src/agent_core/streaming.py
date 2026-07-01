@@ -7,7 +7,7 @@ class Event:
     type: str
     data: dict
 
-    def to_dict(self) -> dict:
+    def to_dict(self):
         return asdict(self)
     
     def __str__(self) -> str:

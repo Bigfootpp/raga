@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket
@@ -17,6 +18,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
     dispatcher = Dispatcher()
 
+    async def handle_event(event: Event):
+        async for event in dispatcher.dispatch(message=event):
+            await websocket.send_json(event.to_dict())
+
     try:
         while True:
             message: dict = await websocket.receive_json()
@@ -25,8 +30,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if message_type and data:
                 client_event = Event(type=message_type, data=data)
-                async for event in dispatcher.dispatch(message=client_event):
-                    await websocket.send_json(event.to_dict)
+                asyncio.create_task(handle_event(event=client_event))
 
             
     except Exception:
