@@ -1,4 +1,4 @@
-from typing import Iterator
+from typing import AsyncIterator
 
 class Chunk:
     def __init__(self, type: str, data):
@@ -26,10 +26,7 @@ class Stream:
     def __init__(self):
         pass
 
-    def __next__(self) -> Chunk:
-        return ResponseChunk(" nexted")
-
-    def __iter__(self) -> Iterator[Chunk]:
+    async def __aiter__(self) -> AsyncIterator[Chunk]:
         yield ResponseChunk("This")
         yield ResponseChunk(" is")
         yield ResponseChunk(" a")
