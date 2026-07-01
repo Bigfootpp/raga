@@ -15,7 +15,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            data = await websocket.receive()
+            data = await websocket.receive_json()
             stream = await harness.process_input(data["input"])
             async for chunk in stream:
                 await websocket.send_json(chunk.to_dict)
