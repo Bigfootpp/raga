@@ -1,7 +1,7 @@
 from typing import AsyncIterator
 
 from agent_core.harness import Harness
-from agent_core.streaming import Event, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent
+from utils.events import Event, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent
 
 idle_status = StatusEvent("idle")
 responding_status = StatusEvent("responding")

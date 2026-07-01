@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket
 
 from gateway.dispatcher import Dispatcher
-from agent_core.streaming import Event
+from utils.events import Event
 
 app = FastAPI()
 
