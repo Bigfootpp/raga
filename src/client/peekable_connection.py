@@ -1,49 +1,42 @@
-from typing import AsyncIterable, AsyncIterator, Iterable, Optional, Self
+import json
+from typing import Any, AsyncIterable, Iterable, Optional
 
 from websockets.asyncio.client import ClientConnection
-from websockets.exceptions import ConnectionClosed
 from websockets.frames import CloseCode
-from websockets.protocol import State
-from websockets.typing import Data, DataLike
+from websockets.typing import DataLike
 
+from utils.events import EVENT_TYPE
 
-class PeekableConnection:
+class Connection:
     def __init__(self, websocket: ClientConnection) -> None:
         self.websocket: ClientConnection = websocket
-        self.buffer: list[Data] = []
+        self.buffer: list[dict[str, Any]] = []
     
-    def __aiter__(self) -> Self:
-        return self
+    async def _recv(self) -> dict[str, Any]:
+        return json.loads(await self.websocket.recv())
     
-    async def __anext__(self) -> Data:
-        if self.websocket.state != State.OPEN and not self.buffer:
-            raise StopAsyncIteration
-        try:
-            return await self.recv()
-        except ConnectionClosed:
-            raise StopAsyncIteration
-    
-    async def peeker(self) -> AsyncIterator[Data]:
-        next_index = 0
-        while self.websocket.state == State.OPEN:
-            if next_index < len(self.buffer):
-                yield self.buffer[next_index]
-                next_index += 1
-                continue
-
-            msg = await self.websocket.recv()
-            self.buffer.append(msg)
-            yield msg
-
-    async def recv(self, decode: Optional[bool] = None) -> Data:
+    async def recv(self) -> dict[str, Any]:
         if self.buffer:
             return self.buffer.pop(0)
-        return await self.websocket.recv(decode=decode)
-
-    async def peek(self) -> Data:
-        if not self.buffer:
-            msg = await self.websocket.recv()
+        return await self._recv()
+    
+    async def recv_event(self, *events: EVENT_TYPE) -> dict[str, Any]:
+        if not events:
+            raise ValueError("At least one event type must be provided.")
+            
+        for i, msg in enumerate(self.buffer):
+            if msg.get("type") in events:
+                return self.buffer.pop(i)
+        
+        while True:
+            msg = await self._recv()
+            if msg.get("type") in events:
+                return msg
             self.buffer.append(msg)
+
+    async def peek(self) -> dict[str, Any]:
+        if not self.buffer:
+            self.buffer.append(await self._recv())
         return self.buffer[0]
     
     async def send(

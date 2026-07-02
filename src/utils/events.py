@@ -2,6 +2,11 @@ import json
 from dataclasses import dataclass, asdict
 from typing import Literal
 
+STATUS_TYPE = Literal["idle", "responding", "thinking"]
+EVENT_TYPE = Literal["response", "thought", "status"]
+
+idk: EVENT_TYPE
+
 @dataclass
 class Event:
     type: str
@@ -15,7 +20,7 @@ class Event:
 
 # SERVER
 class StatusEvent(Event):
-    def __init__(self, content: Literal["idle", "responding", "thinking"]):
+    def __init__(self, content: STATUS_TYPE):
         super().__init__(type="status", data={"state": content})
 
 class ResponseChunkEvent(Event):
