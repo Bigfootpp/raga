@@ -5,8 +5,6 @@ from typing import Literal
 STATUS_TYPE = Literal["idle", "responding", "thinking"]
 EVENT_TYPE = Literal["response", "thought", "status"]
 
-idk: EVENT_TYPE
-
 @dataclass
 class Event:
     type: str
@@ -30,5 +28,3 @@ class ResponseChunkEvent(Event):
 class ThoughtChunkEvent(Event):
     def __init__(self, content: str):
         super().__init__(type="thought", data={"chunk": content})
-
-# CLIENT

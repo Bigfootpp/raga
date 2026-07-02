@@ -1,23 +1,21 @@
-from typing import Optional
-# from client.peekable_connection import PeekableConnection
+from typing import Optional, Protocol
 
 import websockets
 from websockets.asyncio.client import ClientConnection
 
-class StreamResponse:
-    def __init__(self, websocket: ClientConnection):
-        self.websocket = websocket
-    
-    def __aiter__(self):
-        return self
-    
-    def __anext__(self):
-        pass
-        
+from utils.events import ResponseChunkEvent, ThoughtChunkEvent, StatusEvent
+
+
+
+class Listener(Protocol):
+    async def handle_responses(self, chunk: ResponseChunkEvent) -> None: ...
+    async def handle_thought(self, chunk: ThoughtChunkEvent) -> None: ...
+    async def handle_status(self, chunk: StatusEvent) -> None: ...
 
 class Client:
-    def __init__(self, uri: str = "ws://127.0.0.1:8000/ws"):
+    def __init__(self, delegate: Listener, uri: str = "ws://127.0.0.1:8000/ws"):
         self.uri = uri
+        self.delegate = delegate
         self.websocket: Optional[ClientConnection] = None
     
     async def connect(self):
@@ -25,7 +23,7 @@ class Client:
     
     async def process_input(self, input: str):
         if self.websocket:
-            await self.websocket.send("")
+            await self.websocket.send(input)
         else:
             raise ConnectionError("Can't process input, client must be connected to the server")
 
