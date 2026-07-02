@@ -13,6 +13,7 @@ class Event:
     def __str__(self) -> str:
         return json.dumps(self.to_dict())
 
+# SERVER
 class StatusEvent(Event):
     def __init__(self, content: Literal["idle", "responding", "thinking"]):
         super().__init__(type="status", data={"state": content})
@@ -24,3 +25,5 @@ class ResponseChunkEvent(Event):
 class ThoughtChunkEvent(Event):
     def __init__(self, content: str):
         super().__init__(type="thought", data={"chunk": content})
+
+# CLIENT
