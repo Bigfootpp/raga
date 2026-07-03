@@ -2,7 +2,7 @@ from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
-from utils.messages import ErrorEvent, ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
+from utils.frames import ErrorEvent, ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
 
 LOGO = r"""
                  .                      

@@ -5,7 +5,7 @@ from typing import Optional
 import websockets
 from websockets.asyncio.client import ClientConnection
 
-from utils.messages import ErrorEvent, Event, ResponseChunkEvent, SendMessageAction, ThoughtChunkEvent, StatusEvent, to_event
+from utils.frames import ErrorEvent, Event, ResponseChunkEvent, SendMessageAction, ThoughtChunkEvent, StatusEvent, to_event
 
 class Client:
     def __init__(self, *args, **kwargs):

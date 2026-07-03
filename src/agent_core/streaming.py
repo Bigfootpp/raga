@@ -1,6 +1,6 @@
 import asyncio
 from typing import AsyncIterator
-from utils.messages import Event, ResponseChunkEvent
+from utils.frames import Event, ResponseChunkEvent
 
 # Mock stream class
 class Stream:

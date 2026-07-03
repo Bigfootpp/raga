@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketException
 
 from gateway.dispatcher import Dispatcher
 from pydantic import ValidationError
-from utils.messages import Action, to_action
+from utils.frames import Action, to_action
 
 app = FastAPI()
 

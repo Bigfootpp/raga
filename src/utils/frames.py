@@ -18,11 +18,11 @@ class ActionType(StrEnum):
     SEND_MESSAGE = "send_message"
     INTERRUPT = "interrupt"
 
-MessageType = EventType | ActionType
+FrameType = EventType | ActionType
 
 
-class Message(BaseModel, frozen=True):
-    type: MessageType
+class Frame(BaseModel, frozen=True):
+    type: FrameType
 
     @model_validator(mode="before")
     @classmethod
@@ -48,11 +48,11 @@ class Message(BaseModel, frozen=True):
         return self.model_dump_json()
 
 
-class Event(Message, frozen=True):
+class Event(Frame, frozen=True):
     type: EventType
 
 
-class Action(Message, frozen=True):
+class Action(Frame, frozen=True):
     type: ActionType
 
 

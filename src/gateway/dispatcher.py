@@ -1,7 +1,7 @@
 from typing import AsyncIterator
 
 from agent_core.harness import Harness
-from utils.messages import Action, Event, SendMessageAction, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent, StatusType
+from utils.frames import Action, Event, SendMessageAction, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent, StatusType
 
 idle_status = StatusEvent(state=StatusType.IDLE)
 responding_status = StatusEvent(state=StatusType.RESPONDING)
