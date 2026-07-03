@@ -65,7 +65,7 @@ class MessageHistory(Container):
 
         for text in history_list:
             self.mount(UserMessage(text))
-            self.mount(AgentMessage(text))
+            # self.mount(AgentMessage(text))
     
 class InputRow(Horizontal):
     def compose(self) -> ComposeResult:
@@ -75,6 +75,7 @@ class InputRow(Horizontal):
 class RagaTUI(Client, App):
     CSS_PATH = "tui.tcss"
 
+    current_response = ""
     async def on_mount(self):
         self.log("Connected")
         await self.connect()
@@ -96,16 +97,17 @@ class RagaTUI(Client, App):
         
         await self.process_input(text)
 
-        history = self.query_one("#message-history", MessageHistory)
-        history.update_history([""])
+        self.current_response = ""
 
         event.input.value = ""
+    
+    async def handle_response(self, chunk: ResponseChunkEvent) -> None:
+        self.current_response = self.current_response + chunk.chunk
+        history = self.query_one("#message-history", MessageHistory)
+        history.update_history([self.current_response])
 
         scroll = self.query_one("#main-scroll", ScrollableContainer)
         scroll.scroll_end(animate=False)
-    
-    async def handle_response(self, chunk: ResponseChunkEvent) -> None:
-        self.log(chunk.chunk)
     
     async def handle_status(self, status: StatusEvent) -> None:
         self.log(status.state)
