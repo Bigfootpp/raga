@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass, asdict
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 STATUS_TYPE = Literal["idle", "responding", "thinking"]
 
@@ -43,3 +43,18 @@ class ThoughtChunkEvent(Event):
 class SendMessageAction(Action):
     def __init__(self, content: str) -> None:
         super().__init__(type="send_message", data={"text": content})
+
+def to_event(event_json: dict[str, Any]) -> Optional[Event]:
+    event_type: Optional[str] = event_json.get("type")
+    event_data: Optional[dict[str, Any]] = event_json.get("data")
+    
+    if event_type and event_data:
+        match event_type:
+            case "response":
+                return ResponseChunkEvent(event_data.get("chunk", ""))
+            case "thought":
+                return ThoughtChunkEvent(event_data.get("chunk", ""))
+            case "status":
+                return StatusEvent(event_data.get("state", ""))
+    
+    return
