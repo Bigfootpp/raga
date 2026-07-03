@@ -2,7 +2,7 @@ from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
-from utils.events import ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
+from utils.messages import ErrorEvent, ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
 
 LOGO = r"""
                  .                      
@@ -76,7 +76,7 @@ class RagaTUI(Client, App):
     CSS_PATH = "tui.tcss"
 
     async def on_mount(self):
-        self.notify("Connected")
+        self.log("Connected")
         await self.connect()
 
     def compose(self) -> ComposeResult:
@@ -105,16 +105,19 @@ class RagaTUI(Client, App):
         scroll.scroll_end(animate=False)
     
     async def handle_response(self, chunk: ResponseChunkEvent) -> None:
-        self.log(str(chunk.data))
+        self.log(chunk.chunk)
     
-    async def handle_status(self, chunk: StatusEvent) -> None:
-        self.log(str(chunk.data))
+    async def handle_status(self, status: StatusEvent) -> None:
+        self.log(status.state)
     
     async def handle_thought(self, chunk: ThoughtChunkEvent) -> None:
-        self.log(str(chunk.data))
+        self.log(chunk.chunk)
     
     async def handle_disconnect(self) -> None:
-        self.notify("Disconnected")
+        self.log("Disconnected")
+    
+    async def handle_error(self, error: ErrorEvent) -> None:
+        self.log(error.message)
 
 if __name__ == "__main__":
     app = RagaTUI()
