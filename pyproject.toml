@@ -14,6 +14,7 @@ dependencies = [
     "websockets>=16.0",
     "uvicorn>=0.49.0",
     "fastapi>=0.138.2",
+    "pydantic>=2.13.4",
     "openai>=2.44.0"
 ]
 
