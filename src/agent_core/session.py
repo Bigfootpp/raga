@@ -2,12 +2,6 @@ class Message:
     def __init__(self, role: str, input: str):
         self.role = role
         self.input = input
-    
-    def to_dict(self):
-        return {
-            "role": self.role,
-            "content": self.input
-        }
 
 class UserContent(Message):
     def __init__(self, input: str):
