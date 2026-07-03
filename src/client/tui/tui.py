@@ -1,6 +1,8 @@
+from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
+from utils.events import ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
 
 LOGO = r"""
                  .                      
@@ -70,9 +72,12 @@ class InputRow(Horizontal):
         yield Static("> ", id="prompt-char")
         yield Input(placeholder="Ask RAGA something...", id="user-input").focus()
 
-class RagaTUI(App):
-    history: list[str] = []
+class RagaTUI(Client, App):
     CSS_PATH = "tui.tcss"
+
+    async def on_mount(self):
+        self.notify("Connected")
+        await self.connect()
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="main-scroll"):
@@ -83,21 +88,33 @@ class RagaTUI(App):
             yield Static(" TODO", id="status-metrics") # Prototype design: (ctx --  |  [░░░░░░░░░░]  |  14s  |  🌐 0s)
         yield InputRow(id="input-row")
     
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
 
         if not text:
             return
-
-        self.history.append(text)
+        
+        await self.process_input(text)
 
         history = self.query_one("#message-history", MessageHistory)
-        history.update_history(self.history)
+        history.update_history([""])
 
         event.input.value = ""
 
         scroll = self.query_one("#main-scroll", ScrollableContainer)
         scroll.scroll_end(animate=False)
+    
+    async def handle_response(self, chunk: ResponseChunkEvent) -> None:
+        self.log(str(chunk.data))
+    
+    async def handle_status(self, chunk: StatusEvent) -> None:
+        self.log(str(chunk.data))
+    
+    async def handle_thought(self, chunk: ThoughtChunkEvent) -> None:
+        self.log(str(chunk.data))
+    
+    async def handle_disconnect(self) -> None:
+        self.notify("Disconnected")
 
 if __name__ == "__main__":
     app = RagaTUI()

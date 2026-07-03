@@ -1,21 +1,16 @@
 import asyncio
 import json
-from typing import Optional, Protocol
+from typing import Optional
 
 import websockets
 from websockets.asyncio.client import ClientConnection
 
-from utils.events import Event, ResponseChunkEvent, ThoughtChunkEvent, StatusEvent, to_event
-
-class Listener(Protocol):
-    async def handle_response(self, chunk: ResponseChunkEvent) -> None: ...
-    async def handle_thought(self, chunk: ThoughtChunkEvent) -> None: ...
-    async def handle_status(self, chunk: StatusEvent) -> None: ...
+from utils.events import Event, ResponseChunkEvent, SendMessageAction, ThoughtChunkEvent, StatusEvent, to_event
 
 class Client:
-    def __init__(self, delegate: Listener, uri: str = "ws://127.0.0.1:8000/ws"):
-        self.uri = uri
-        self.delegate = delegate
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.uri = "ws://127.0.0.1:8000/ws"
         self.websocket: Optional[ClientConnection] = None
         self._listen_task: Optional[asyncio.Task] = None
     
@@ -27,11 +22,11 @@ class Client:
     async def _dispatch(self, event: Event):
         match event:
             case ResponseChunkEvent():
-                await self.delegate.handle_response(event)
+                await self.handle_response(event)
             case ThoughtChunkEvent():
-                await self.delegate.handle_thought(event)
+                await self.handle_thought(event)
             case StatusEvent():
-                await self.delegate.handle_status(event)
+                await self.handle_status(event)
 
     async def _listen_loop(self):
         ws_connection = self.websocket
@@ -46,14 +41,20 @@ class Client:
             except asyncio.CancelledError:
                 pass
 
-            except Exception:
-                pass
+            finally:
+                await self.handle_disconnect()
     
-    async def process_input(self, input: str):
+    async def process_input(self, msg: str):
         if self.websocket:
-            await self.websocket.send(input)
+            action_json = json.dumps(SendMessageAction(msg).to_dict())
+            await self.websocket.send(action_json)
         else:
             raise ConnectionError("Can't process input, client must be connected to the server")
+    
+    async def handle_response(self, chunk: ResponseChunkEvent) -> None: ...
+    async def handle_thought(self, chunk: ThoughtChunkEvent) -> None: ...
+    async def handle_status(self, chunk: StatusEvent) -> None: ...
+    async def handle_disconnect(self) -> None: ...
 
     async def close(self):
         if self._listen_task:
@@ -67,3 +68,5 @@ class Client:
         if self.websocket:
             await self.websocket.close()
             self.websocket = None
+        
+        await self.handle_disconnect()
