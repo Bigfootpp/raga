@@ -11,6 +11,7 @@ class StatusType(StrEnum):
 class EventType(StrEnum):
     RESPONSE = "response"
     THOUGHT = "thought"
+    USER_MESSAGE = "user_message"
     STATUS = "status"
     ERROR = "error"
 
@@ -56,6 +57,7 @@ class Action(Frame, frozen=True):
     type: ActionType
 
 
+# SERVER
 class ErrorEvent(Event, frozen=True):
     type: Literal[EventType.ERROR] = EventType.ERROR
     message: str
@@ -63,6 +65,10 @@ class ErrorEvent(Event, frozen=True):
 class StatusEvent(Event, frozen=True):
     type: Literal[EventType.STATUS] = EventType.STATUS
     state: StatusType
+
+class UserMessageEvent(Event, frozen=True):
+    type: Literal[EventType.USER_MESSAGE] = EventType.USER_MESSAGE
+    text: str
 
 class ResponseChunkEvent(Event, frozen=True):
     type: Literal[EventType.RESPONSE] = EventType.RESPONSE
@@ -73,6 +79,7 @@ class ThoughtChunkEvent(Event, frozen=True):
     chunk: str
 
 
+# CLIENT
 class SendMessageAction(Action, frozen=True):
     type: Literal[ActionType.SEND_MESSAGE] = ActionType.SEND_MESSAGE
     text: str
