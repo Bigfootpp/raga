@@ -5,7 +5,16 @@ from typing import Optional
 import websockets
 from websockets.asyncio.client import ClientConnection
 
-from utils.frames import ErrorEvent, Event, ResponseChunkEvent, SendMessageAction, ThoughtChunkEvent, StatusEvent, to_event
+from utils.frames import (
+    Event,
+    SendMessageAction,
+    StatusEvent,
+    ResponseChunkEvent,
+    ThoughtChunkEvent,
+    ErrorEvent,
+    UserMessageEvent,
+    to_event
+)
 
 class Client:
     def __init__(self, *args, **kwargs):
@@ -27,6 +36,10 @@ class Client:
                 await self.handle_thought(event)
             case StatusEvent():
                 await self.handle_status(event)
+            case ErrorEvent():
+                await self.handle_error(event)
+            case UserMessageEvent():
+                await self.handle_user_message(event)
 
     async def _listen_loop(self):
         ws_connection = self.websocket
@@ -51,6 +64,7 @@ class Client:
         else:
             raise ConnectionError("Can't process input, client must be connected to the server")
     
+    async def handle_user_message(self, chunk: UserMessageEvent) -> None: ...
     async def handle_response(self, chunk: ResponseChunkEvent) -> None: ...
     async def handle_thought(self, chunk: ThoughtChunkEvent) -> None: ...
     async def handle_status(self, status: StatusEvent) -> None: ...
