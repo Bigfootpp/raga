@@ -3,6 +3,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
 from utils.frames import ErrorEvent, ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
+from utils.messages import AssistantMessage, Message, UserMessage
 
 LOGO = r"""
                  .                      
@@ -34,7 +35,7 @@ class InfoBox(Container):
         with Vertical(id="right-pane"):
             yield Label("Available Tools", classes="section-title")
 
-class UserMessage(Container):
+class UserMessageContainer(Container):
     def __init__(self, text: str, **kwargs) -> None:
         super().__init__(classes="message-box", **kwargs)
         self.text = text
@@ -43,7 +44,7 @@ class UserMessage(Container):
         yield Label("USER", classes="user-message-sender")
         yield Label(self.text, classes="user-message-content")
 
-class AgentMessage(Container):
+class AgentMessageContainer(Container):
     def __init__(self, text: str, **kwargs) -> None:
         super().__init__(classes="message-box", **kwargs)
         self.text = text
@@ -56,17 +57,21 @@ class MessageHistory(Container):
     def __init__(self, id="message-history", **kwargs):
         super().__init__(id=id, **kwargs)
 
-    def update_history(self, history_list: list[str]) -> None:
-        for message_widget in self.query(UserMessage):
+    def update_history(self, history_list: list[Message]) -> None:
+        for message_widget in self.query(UserMessageContainer):
             message_widget.remove()
 
-        for message_widget in self.query(AgentMessage):
+        for message_widget in self.query(AgentMessageContainer):
             message_widget.remove()
 
-        for text in history_list:
-            self.mount(UserMessage(text))
-            # self.mount(AgentMessage(text))
-    
+        for message in history_list:
+            match message:
+                case UserMessage():
+                    self.mount(UserMessageContainer(message.content))
+                case AssistantMessage():
+                    if message.content:
+                        self.mount(AgentMessageContainer(message.content))
+
 class InputRow(Horizontal):
     def compose(self) -> ComposeResult:
         yield Static("> ", id="prompt-char")
@@ -102,9 +107,11 @@ class RagaTUI(Client, App):
         event.input.value = ""
     
     async def handle_response(self, chunk: ResponseChunkEvent) -> None:
+        self.log(chunk.chunk)
+
         self.current_response = self.current_response + chunk.chunk
         history = self.query_one("#message-history", MessageHistory)
-        history.update_history([self.current_response])
+        history.update_history([AssistantMessage(content=self.current_response)])
 
         scroll = self.query_one("#main-scroll", ScrollableContainer)
         scroll.scroll_end(animate=False)
