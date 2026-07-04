@@ -46,7 +46,7 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             action: Action = to_action(action_json)
             
-            async for event in dispatcher.dispatch(message=action):
+            async for event in dispatcher.dispatch(action=action):
                 await websocket.send_json(event.to_dict())
 
         except Exception as e:
