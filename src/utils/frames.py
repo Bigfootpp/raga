@@ -89,7 +89,7 @@ class InterruptAction(Action, frozen=True):
 
 
 EventUnion = Annotated[
-    Union[ErrorEvent, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent],
+    Union[ErrorEvent, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent, UserMessageEvent],
     Field(discriminator="type")
 ]
 
