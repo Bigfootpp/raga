@@ -115,38 +115,38 @@ class RagaTUI(Client, App):
 
         event.input.value = ""
     
-    async def handle_response(self, chunk: ResponseChunkEvent) -> None:
-        self.log(chunk.chunk)
+    async def handle_response(self, event: ResponseChunkEvent) -> None:
+        self.log(event.chunk)
 
-        self.current_response = self.current_response + chunk.chunk
+        self.current_response = self.current_response + event.chunk
         
         history_copy = self.history.copy()
         history_copy.append(AssistantMessage(content=self.current_response))
         self.update_history(history_copy)
     
-    async def handle_user_message(self, text: UserMessageEvent) -> None:
-        self.log(text.text)
+    async def handle_user_message(self, event: UserMessageEvent) -> None:
+        self.log(event.text)
 
-        self.history.append(UserMessage(content=text.text))
+        self.history.append(UserMessage(content=event.text))
         self.update_history(self.history)
     
-    async def handle_status(self, status: StatusEvent) -> None:
-        self.log(status.state)
+    async def handle_status(self, event: StatusEvent) -> None:
+        self.log(event.state)
 
-        match status.state:
+        match event.state:
             case StatusType.IDLE:
                 self.history.append(AssistantMessage(content=self.current_response))
                 self.update_history(self.history)
                 self.current_response = ""
     
-    async def handle_thought(self, chunk: ThoughtChunkEvent) -> None:
-        self.log(chunk.chunk)
+    async def handle_thought(self, event: ThoughtChunkEvent) -> None:
+        self.log(event.chunk)
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
     
-    async def handle_error(self, error: ErrorEvent) -> None:
-        self.log(error.message)
+    async def handle_error(self, event: ErrorEvent) -> None:
+        self.log(event.message)
     
     def update_history(self, history_list: list[Message]):
         history = self.query_one("#message-history", MessageHistory)
