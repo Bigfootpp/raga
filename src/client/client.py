@@ -6,6 +6,7 @@ import websockets
 from websockets.asyncio.client import ClientConnection
 
 from utils.frames import (
+    AssistantMessageEvent,
     Event,
     SendMessageAction,
     StatusEvent,
@@ -40,6 +41,8 @@ class Client:
                 await self.handle_error(event)
             case UserMessageEvent():
                 await self.handle_user_message(event)
+            case AssistantMessageEvent():
+                await self.handle_assistant_message(event)
 
     async def _listen_loop(self):
         ws_connection = self.websocket
@@ -65,6 +68,7 @@ class Client:
             raise ConnectionError("Can't process input, client must be connected to the server")
     
     async def handle_user_message(self, event: UserMessageEvent) -> None: ...
+    async def handle_assistant_message(self, event: AssistantMessageEvent) -> None: ...
     async def handle_response(self, event: ResponseChunkEvent) -> None: ...
     async def handle_thought(self, event: ThoughtChunkEvent) -> None: ...
     async def handle_status(self, event: StatusEvent) -> None: ...
