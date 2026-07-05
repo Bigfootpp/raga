@@ -91,7 +91,6 @@ class TUI(Client, App):
 
     history: list[Message] = []
     async def on_mount(self):
-        self.log("Connected")
         await self.connect()
 
     def compose(self) -> ComposeResult:
@@ -146,6 +145,9 @@ class TUI(Client, App):
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
+    
+    async def handle_connect(self) -> None:
+        self.log("Connected")
     
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
