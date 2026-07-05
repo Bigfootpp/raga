@@ -2,7 +2,14 @@ from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
-from utils.frames import ErrorEvent, ResponseChunkEvent, StatusEvent, ThoughtChunkEvent
+from utils.frames import (
+    ErrorEvent,
+    ResponseChunkEvent,
+    StatusEvent,
+    ThoughtChunkEvent,
+    UserMessageEvent,
+    StatusType,
+)
 from utils.messages import AssistantMessage, Message, UserMessage
 
 LOGO = r"""
@@ -81,6 +88,8 @@ class RagaTUI(Client, App):
     CSS_PATH = "tui.tcss"
 
     current_response = ""
+
+    history: list[Message] = []
     async def on_mount(self):
         self.log("Connected")
         await self.connect()
@@ -110,14 +119,25 @@ class RagaTUI(Client, App):
         self.log(chunk.chunk)
 
         self.current_response = self.current_response + chunk.chunk
-        history = self.query_one("#message-history", MessageHistory)
-        history.update_history([AssistantMessage(content=self.current_response)])
+        
+        history_copy = self.history.copy()
+        history_copy.append(AssistantMessage(content=self.current_response))
+        self.update_history(history_copy)
+    
+    async def handle_user_message(self, text: UserMessageEvent) -> None:
+        self.log(text.text)
 
-        scroll = self.query_one("#main-scroll", ScrollableContainer)
-        scroll.scroll_end(animate=False)
+        self.history.append(UserMessage(content=text.text))
+        self.update_history(self.history)
     
     async def handle_status(self, status: StatusEvent) -> None:
         self.log(status.state)
+
+        match status.state:
+            case StatusType.IDLE:
+                self.history.append(AssistantMessage(content=self.current_response))
+                self.update_history(self.history)
+                self.current_response = ""
     
     async def handle_thought(self, chunk: ThoughtChunkEvent) -> None:
         self.log(chunk.chunk)
@@ -127,6 +147,13 @@ class RagaTUI(Client, App):
     
     async def handle_error(self, error: ErrorEvent) -> None:
         self.log(error.message)
+    
+    def update_history(self, history_list: list[Message]):
+        history = self.query_one("#message-history", MessageHistory)
+        history.update_history(history_list)
+
+        scroll = self.query_one("#main-scroll", ScrollableContainer)
+        scroll.scroll_end(animate=False)
 
 if __name__ == "__main__":
     app = RagaTUI()
