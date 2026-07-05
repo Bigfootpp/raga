@@ -1,5 +1,5 @@
 import argparse
-from client.tui.tui import RagaTUI
+from client.tui.tui import TUI
 import sys
 import uvicorn
 
@@ -13,7 +13,7 @@ def start_server():
 
 
 def start_tui():
-    app = RagaTUI()
+    app = TUI()
     app.run()
 
 

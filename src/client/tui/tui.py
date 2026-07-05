@@ -84,7 +84,7 @@ class InputRow(Horizontal):
         yield Static("> ", id="prompt-char")
         yield Input(placeholder="Ask RAGA something...", id="user-input").focus()
 
-class RagaTUI(Client, App):
+class TUI(Client, App):
     CSS_PATH = "tui.tcss"
 
     current_response = ""
@@ -158,5 +158,5 @@ class RagaTUI(Client, App):
         scroll.scroll_end(animate=False)
 
 if __name__ == "__main__":
-    app = RagaTUI()
+    app = TUI()
     app.run()
