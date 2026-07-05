@@ -3,12 +3,12 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
 from utils.frames import (
+    AssistantMessageEvent,
     ErrorEvent,
     ResponseChunkEvent,
     StatusEvent,
     ThoughtChunkEvent,
     UserMessageEvent,
-    StatusType,
 )
 from utils.messages import AssistantMessage, Message, UserMessage
 
@@ -130,14 +130,16 @@ class RagaTUI(Client, App):
         self.history.append(UserMessage(content=event.text))
         self.update_history(self.history)
     
+    async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
+        self.log(event.text)
+
+        self.history.append(AssistantMessage(content=event.text))
+        self.update_history(self.history)
+        
+        self.current_response = ""
+    
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
-
-        match event.state:
-            case StatusType.IDLE:
-                self.history.append(AssistantMessage(content=self.current_response))
-                self.update_history(self.history)
-                self.current_response = ""
     
     async def handle_thought(self, event: ThoughtChunkEvent) -> None:
         self.log(event.chunk)
