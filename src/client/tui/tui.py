@@ -51,7 +51,7 @@ class UserMessageContainer(Container):
         yield Label("USER", classes="user-message-sender")
         yield Label(self.text, classes="user-message-content")
 
-class ReasoningMessageContainer(Container):
+class ThinkingMessageContainer(Container):
     def __init__(self, text: str, **kwargs) -> None:
         super().__init__(classes="thinking-container", **kwargs)
         self.text = text
