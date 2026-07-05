@@ -3,6 +3,7 @@ from typing import AsyncIterator
 from agent_core.harness import Harness
 from utils.frames import (
     Action,
+    AssistantMessageEvent,
     Event,
     SendMessageAction,
     StatusEvent,
@@ -28,17 +29,23 @@ class Dispatcher:
     async def dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
             case SendMessageAction():
+                final_message = ""
+
                 last_yielded_status = idle_status
                 
                 yield UserMessageEvent(text=action.text)
                 
                 async for event in await self.harness.process_input(action.text):
-                    status_for_event = EVENT_STATUS_MAPPING[event.__class__]
+                    status = EVENT_STATUS_MAPPING[event.__class__]
                 
-                    if status_for_event != last_yielded_status:
-                        last_yielded_status = status_for_event
+                    if status != last_yielded_status:
+                        last_yielded_status = status
                         yield last_yielded_status
+                    
+                    if isinstance(event, ResponseChunkEvent):
+                        final_message += event.chunk
                     
                     yield event
                 
+                yield AssistantMessageEvent(text=final_message)
                 yield idle_status
