@@ -51,6 +51,17 @@ class UserMessageContainer(Container):
         yield Label("USER", classes="user-message-sender")
         yield Label(self.text, classes="user-message-content")
 
+class ReasoningMessageContainer(Container):
+    def __init__(self, text: str, **kwargs) -> None:
+        super().__init__(classes="thinking-container", **kwargs)
+        self.text = text
+
+    def compose(self) -> ComposeResult:
+        header = Static(classes="thinking-header")
+        header.border_title = "thinking"
+        yield header
+        yield Label(self.text, classes="thinking-content")
+
 class AgentMessageContainer(Container):
     def __init__(self, text: str, **kwargs) -> None:
         super().__init__(classes="message-box", **kwargs)

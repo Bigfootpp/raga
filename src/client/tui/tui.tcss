@@ -53,7 +53,6 @@ Screen {
 }
 
 .message-box {
-    background: #0d0d0d;
     border-left: solid #ffffff;
     margin-bottom: 1;
     padding: 0 1;
@@ -76,6 +75,32 @@ Screen {
 .agent-message-content {
     color: #d3d3d3;
     margin-left: 2;
+}
+
+.thinking-container {
+    height: auto;
+    margin-bottom: 1;
+    layout: vertical;
+}
+
+.thinking-header {
+    border-top: solid #5a5a5a;
+    border-left: solid #5a5a5a;
+    border-right: none;
+    border-bottom: none;
+    border-title-align: left;
+    border-title-style: italic;
+    height: 1;
+    width: 20;
+    margin: 0;
+    padding: 0;
+}
+
+.thinking-content {
+    color: #5a5a5a;
+    text-style: italic;
+    margin-left: 2;
+    height: auto;
 }
 
 
