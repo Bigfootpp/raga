@@ -22,6 +22,7 @@ class Client:
         super().__init__(*args, **kwargs)
         self.uri = "ws://127.0.0.1:8000/ws"
         self.reconnect_delay = 1
+        self.connected: bool = False
         
         self.websocket: Optional[ClientConnection] = None
         self._listen_task: Optional[asyncio.Task] = None
@@ -38,6 +39,7 @@ class Client:
         while self._running_connection:
             try:
                 self.websocket = await connect(self.uri)
+                self.connected = True
                 await self.handle_connect()
                 
                 await self._listen_loop()
@@ -48,6 +50,7 @@ class Client:
                 pass
             finally:
                 if self.websocket:
+                    self.connected = False
                     self.websocket = None
                     await self.handle_disconnect()
 
