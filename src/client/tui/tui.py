@@ -5,12 +5,13 @@ from textual.widgets import Input, Static, Label
 from utils.frames import (
     AssistantMessageEvent,
     ErrorEvent,
+    Event,
     ResponseChunkEvent,
     StatusEvent,
     ThoughtChunkEvent,
+    ThoughtMessageEvent,
     UserMessageEvent,
 )
-from utils.messages import AssistantMessage, Message, UserMessage
 
 LOGO = r"""
                  .                      
@@ -75,20 +76,23 @@ class MessageHistory(Container):
     def __init__(self, id="message-history", **kwargs):
         super().__init__(id=id, **kwargs)
 
-    def update_history(self, history_list: list[Message]) -> None:
-        for message_widget in self.query(UserMessageContainer):
-            message_widget.remove()
-
-        for message_widget in self.query(AgentMessageContainer):
-            message_widget.remove()
+    def update_history(self, history_list: list[Event]) -> None:
+        for queried in (
+            self.query(UserMessageContainer),
+            self.query(AgentMessageContainer),
+            self.query(ThinkingMessageContainer),
+        ):
+            for message_widget in queried:
+                message_widget.remove()
 
         for message in history_list:
             match message:
-                case UserMessage():
-                    self.mount(UserMessageContainer(message.content))
-                case AssistantMessage():
-                    if message.content:
-                        self.mount(AgentMessageContainer(message.content))
+                case UserMessageEvent():
+                    self.mount(UserMessageContainer(message.text))
+                case AssistantMessageEvent():
+                    self.mount(AgentMessageContainer(message.text))
+                case ThoughtMessageEvent():
+                    self.mount(ThinkingMessageContainer(message.text))
 
 class InputRow(Horizontal):
     def compose(self) -> ComposeResult:
@@ -100,7 +104,7 @@ class TUI(Client, App):
 
     current_response = ""
 
-    history: list[Message] = []
+    history: list[Event] = []
     async def on_mount(self):
         await self.connect()
 
@@ -121,8 +125,6 @@ class TUI(Client, App):
         
         await self.process_input(text)
 
-        self.current_response = ""
-
         event.input.value = ""
     
     async def handle_response(self, event: ResponseChunkEvent) -> None:
@@ -131,28 +133,44 @@ class TUI(Client, App):
         self.current_response = self.current_response + event.chunk
         
         history_copy = self.history.copy()
-        history_copy.append(AssistantMessage(content=self.current_response))
+        history_copy.append(AssistantMessageEvent(text=self.current_response))
+        self.update_history(history_copy)
+    
+    async def handle_thought(self, event: ThoughtChunkEvent) -> None:
+        self.log(event.chunk)
+
+        self.current_response = self.current_response + event.chunk
+        
+        history_copy = self.history.copy()
+        history_copy.append(ThoughtMessageEvent(text=self.current_response))
         self.update_history(history_copy)
     
     async def handle_user_message(self, event: UserMessageEvent) -> None:
         self.log(event.text)
 
-        self.history.append(UserMessage(content=event.text))
+        self.history.append(event)
         self.update_history(self.history)
+
+        self.current_response = ""
     
     async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
         self.log(event.text)
 
-        self.history.append(AssistantMessage(content=event.text))
+        self.history.append(event)
+        self.update_history(self.history)
+        
+        self.current_response = ""
+    
+    async def handle_thought_message(self, event: ThoughtMessageEvent) -> None:
+        self.log(event.text)
+
+        self.history.append(event)
         self.update_history(self.history)
         
         self.current_response = ""
     
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
-    
-    async def handle_thought(self, event: ThoughtChunkEvent) -> None:
-        self.log(event.chunk)
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
@@ -163,7 +181,7 @@ class TUI(Client, App):
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
     
-    def update_history(self, history_list: list[Message]):
+    def update_history(self, history_list: list[Event]):
         history = self.query_one("#message-history", MessageHistory)
         history.update_history(history_list)
 
