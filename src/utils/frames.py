@@ -75,6 +75,10 @@ class AssistantMessageEvent(Event, frozen=True):
     type: Literal[EventType.ASSISTANT_MESSAGE] = EventType.ASSISTANT_MESSAGE
     text: str
 
+class ThoughtMessageEvent(Event, frozen=True):
+    type: Literal[EventType.THOUGHT] = EventType.THOUGHT
+    text: str
+
 class ResponseChunkEvent(Event, frozen=True):
     type: Literal[EventType.RESPONSE] = EventType.RESPONSE
     chunk: str
@@ -94,12 +98,23 @@ class InterruptAction(Action, frozen=True):
 
 
 EventUnion = Annotated[
-    Union[ErrorEvent, StatusEvent, ResponseChunkEvent, ThoughtChunkEvent, UserMessageEvent, AssistantMessageEvent],
-    Field(discriminator="type")
+    Union[
+        ErrorEvent,
+        StatusEvent,
+        ResponseChunkEvent,
+        ThoughtChunkEvent,
+        UserMessageEvent,
+        AssistantMessageEvent,
+        ThoughtMessageEvent,
+    ],
+    Field(discriminator="type"),
 ]
 
 ActionUnion = Annotated[
-    Union[SendMessageAction, InterruptAction],
+    Union[
+        SendMessageAction,
+        InterruptAction,
+    ],
     Field(discriminator="type")
 ]
 
