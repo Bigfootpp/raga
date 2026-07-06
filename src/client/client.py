@@ -13,6 +13,7 @@ from utils.frames import (
     ResponseChunkEvent,
     ThoughtChunkEvent,
     ErrorEvent,
+    ThoughtMessageEvent,
     UserMessageEvent,
     to_event
 )
@@ -84,6 +85,8 @@ class Client:
                 await self.handle_user_message(event)
             case AssistantMessageEvent():
                 await self.handle_assistant_message(event)
+            case ThoughtMessageEvent():
+                await self.handle_thought_message(event)
 
     async def process_input(self, msg: str):
         if self.websocket and self.websocket.state == websockets.State.OPEN:
@@ -96,6 +99,7 @@ class Client:
     async def handle_disconnect(self) -> None: ...
     async def handle_user_message(self, event: UserMessageEvent) -> None: ...
     async def handle_assistant_message(self, event: AssistantMessageEvent) -> None: ...
+    async def handle_thought_message(self, event: ThoughtMessageEvent) -> None: ...
     async def handle_response(self, event: ResponseChunkEvent) -> None: ...
     async def handle_thought(self, event: ThoughtChunkEvent) -> None: ...
     async def handle_status(self, event: StatusEvent) -> None: ...
