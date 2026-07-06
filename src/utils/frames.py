@@ -13,6 +13,7 @@ class EventType(StrEnum):
     THOUGHT = "thought"
     USER_MESSAGE = "user_message"
     ASSISTANT_MESSAGE = "assistant_message"
+    THOUGHT_MESSAGE = "thought_message"
     STATUS = "status"
     ERROR = "error"
 
@@ -76,7 +77,7 @@ class AssistantMessageEvent(Event, frozen=True):
     text: str
 
 class ThoughtMessageEvent(Event, frozen=True):
-    type: Literal[EventType.THOUGHT] = EventType.THOUGHT
+    type: Literal[EventType.THOUGHT_MESSAGE] = EventType.THOUGHT_MESSAGE
     text: str
 
 class ResponseChunkEvent(Event, frozen=True):
