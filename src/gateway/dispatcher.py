@@ -5,6 +5,7 @@ from utils.frames import (
     Action,
     AssistantMessageEvent,
     Event,
+    InterruptAction,
     SendMessageAction,
     StatusEvent,
     ResponseChunkEvent,
@@ -27,6 +28,10 @@ EVENT_STATUS_MAPPING: dict[type[Event], StatusEvent] = {
 class Dispatcher:
     def __init__(self) -> None:
         self.harness = Harness()
+    
+    async def _hande_interrupt(self, action: InterruptAction):
+        # TODO: implement interrupt command
+        pass
     
     async def _handle_send_message(self, action: SendMessageAction) -> AsyncIterator[Event]:
         thinking_chunks: list[str] = []
