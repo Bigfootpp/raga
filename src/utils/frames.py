@@ -1,12 +1,16 @@
 from enum import StrEnum
 import json
-from typing import Any, Literal, Union, Annotated
+from typing import Any, Literal, Optional, Union, Annotated
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
 
 class StatusType(StrEnum):
     IDLE = "idle"
     RESPONDING = "responding"
     THINKING = "thinking"
+
+class ErrorMessage(StrEnum):
+    INVALID_FORMAT = "Invalid format"
+    INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
     RESPONSE = "response"
@@ -62,7 +66,8 @@ class Action(Frame, frozen=True):
 # SERVER
 class ErrorEvent(Event, frozen=True):
     type: Literal[EventType.ERROR] = EventType.ERROR
-    message: str
+    message: ErrorMessage
+    details: Optional[Union[list, dict, str]] = None
 
 class StatusEvent(Event, frozen=True):
     type: Literal[EventType.STATUS] = EventType.STATUS

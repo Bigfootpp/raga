@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
 
 from gateway.dispatcher import Dispatcher
 from pydantic import ValidationError
-from utils.frames import Action, to_action
+from utils.frames import Action, ErrorEvent, ErrorMessage, to_action
 
 app = FastAPI()
 
@@ -23,13 +23,7 @@ async def websocket_endpoint(websocket: WebSocket):
         match e:
             case ValidationError():
                 try:
-                    await websocket.send_json({
-                        "type": "error",
-                        "data": {
-                            "message": "Invalid format",
-                            "details": e.errors()
-                        }
-                    })
+                    await websocket.send_json(ErrorEvent(message=ErrorMessage.INVALID_FORMAT, details=e.errors()).to_dict())
                 except Exception:
                     return True
                 return False
@@ -37,12 +31,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 return True
             case Exception():
                 try:
-                    await websocket.send_json({
-                        "type": "error",
-                        "data": {
-                            "message": "An internal error occurred during processing."
-                        }
-                    })
+                    await websocket.send_json(ErrorEvent(message=ErrorMessage.INTERNAL_ERROR).to_dict())
                 except Exception:
                     return True
                 return False
