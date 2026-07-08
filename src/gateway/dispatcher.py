@@ -1,7 +1,7 @@
-import asyncio
 from typing import AsyncIterator
 
-from agent_core.harness import Harness
+from agent_core.harness import AgentBusyError, Harness
+from utils.async_utils import aenumerate
 from utils.frames import (
     Action,
     AssistantMessageEvent,
@@ -31,7 +31,6 @@ EVENT_STATUS_MAPPING: dict[type[Event], StatusEvent] = {
 class Dispatcher:
     def __init__(self) -> None:
         self.harness = Harness()
-        self.lock = asyncio.Lock()
     
     async def _hande_interrupt(self, action: InterruptAction):
         # TODO: implement interrupt command
@@ -42,29 +41,34 @@ class Dispatcher:
         final_chunks: list[str] = []
 
         last_yielded_status = IDLE_STATUS
-        
-        yield UserMessageEvent(text=action.text)
-        
-        async for event in await self.harness.process_input(action.text):
-            status = EVENT_STATUS_MAPPING.get(type(event))
-        
-            if status is not None and status != last_yielded_status:
-                if last_yielded_status == THINKING_STATUS and status == RESPONDING_STATUS:
-                    if thinking_chunks:
-                        yield ThoughtMessageEvent(text="".join(thinking_chunks))
-                elif last_yielded_status == RESPONDING_STATUS and status == THINKING_STATUS:
-                    if final_chunks:
-                        yield AssistantMessageEvent(text="".join(final_chunks))
-                
-                last_yielded_status = status
-                yield last_yielded_status
-            
-            if isinstance(event, ResponseChunkEvent):
-                final_chunks.append(event.chunk)
-            elif isinstance(event, ThoughtChunkEvent):
-                thinking_chunks.append(event.chunk)
 
-            yield event
+        try:
+            async for i, event in aenumerate(self.harness.process_input(action.text)):
+                if i == 0:
+                    yield UserMessageEvent(text=action.text)
+                
+                status = EVENT_STATUS_MAPPING.get(type(event))
+            
+                if status is not None and status != last_yielded_status:
+                    if last_yielded_status == THINKING_STATUS and status == RESPONDING_STATUS:
+                        if thinking_chunks:
+                            yield ThoughtMessageEvent(text="".join(thinking_chunks))
+                    elif last_yielded_status == RESPONDING_STATUS and status == THINKING_STATUS:
+                        if final_chunks:
+                            yield AssistantMessageEvent(text="".join(final_chunks))
+                    
+                    last_yielded_status = status
+                    yield last_yielded_status
+                
+                if isinstance(event, ResponseChunkEvent):
+                    final_chunks.append(event.chunk)
+                elif isinstance(event, ThoughtChunkEvent):
+                    thinking_chunks.append(event.chunk)
+
+                yield event
+        except AgentBusyError:
+            yield ErrorEvent(message=ErrorMessage.AGENT_BUSY)
+            return
         
         yield AssistantMessageEvent(text="".join(final_chunks))
         yield IDLE_STATUS
@@ -72,9 +76,5 @@ class Dispatcher:
     async def dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
             case SendMessageAction():
-                if not self.lock.locked():
-                    async with self.lock:
-                        async for event in self._handle_send_message(action):
-                            yield event
-                else:
-                    yield ErrorEvent(message=ErrorMessage.AGENT_BUSY)
+                async for event in self._handle_send_message(action):
+                    yield event
