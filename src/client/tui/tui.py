@@ -1,3 +1,5 @@
+import asyncio
+
 from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
@@ -106,7 +108,7 @@ class TUI(Client, App):
     CSS_PATH = "tui.tcss"
 
     current_response = ""
-
+    status_lock = asyncio.Lock()
     history: list[Event] = []
 
     def _set_status(self, text: str) -> None:
@@ -117,8 +119,14 @@ class TUI(Client, App):
 
         status_widget.update(text)
     
-    def set_status(self, text: str):
-        self._set_status(f"status: {text}")
+    async def set_status(self, text: str):
+        async with self.status_lock:
+            self._set_status(f"status: {text}")
+    
+    async def set_interrupted(self):
+        async with self.status_lock:
+            self._set_status("interrupted")
+            await asyncio.sleep(2)
 
     def _format_status(self, state: StatusType) -> str:
         mapping = {
@@ -129,6 +137,7 @@ class TUI(Client, App):
         return mapping.get(state, state.value)
 
     async def on_mount(self):
+        await self.set_status("connecting")
         await self.connect()
 
     def compose(self) -> ComposeResult:
@@ -139,7 +148,6 @@ class TUI(Client, App):
             yield Static(" ⎈ RAGA ", id="status-badge")
             yield Static("label", id="status-metrics")
         yield InputRow(id="input-row")
-        self.set_status("connecting")
     
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
@@ -153,11 +161,11 @@ class TUI(Client, App):
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
-        self.set_status("disconnected")
+        await self.set_status("disconnected")
     
     async def handle_connect(self) -> None:
         self.log("Connected")
-        self.set_status("connected")
+        await self.set_status("connected")
     
     async def handle_response(self, event: ResponseChunkEvent) -> None:
         self.log(event.chunk)
@@ -203,12 +211,13 @@ class TUI(Client, App):
     
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
-        self.set_status(self._format_status(event.state))
+        await self.set_status(self._format_status(event.state))
     
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
     
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
+        self.interrupted_show = True
         self._set_status("interrupted")
     
     def update_history(self, history_list: list[Event]):
