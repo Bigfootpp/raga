@@ -1,9 +1,11 @@
 import asyncio
+import time
 
 from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.css.query import NoMatches
+from textual.events import Key
 from textual.widgets import Input, Static, Label
 from utils.frames import (
     AssistantMessageEvent,
@@ -35,6 +37,8 @@ LOGO = r"""
                  ]@@8                   
                   BBq                                                                              
 """
+
+INTERRUPT_THRESHOLD = 0.5
 
 class InfoBox(Container):
     def __init__(self, id="info-box", **kwargs):
@@ -110,6 +114,7 @@ class TUI(Client, App):
     current_response = ""
     status_lock = asyncio.Lock()
     history: list[Event] = []
+    last_escape_time = 0
 
     def _set_status(self, text: str) -> None:
         try:
@@ -155,9 +160,27 @@ class TUI(Client, App):
         if not text:
             return
         
-        await self.process_input(text)
+        try:
+            await self.process_input(text)
+        except ConnectionError:
+            pass
 
         event.input.value = ""
+    
+    async def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            current_time = time.time()
+            if current_time - self.last_escape_time < INTERRUPT_THRESHOLD:
+                await self.interrupt_agent()
+                self.last_escape_time = 0.0
+            else:
+                self.last_escape_time = current_time
+
+    async def interrupt_agent(self) -> None:
+        try:
+            await self.interrupt()
+        except ConnectionError:
+            pass
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
