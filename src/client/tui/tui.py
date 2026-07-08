@@ -1,6 +1,7 @@
 from client.client import Client
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.css.query import NoMatches
 from textual.widgets import Input, Static, Label
 from utils.frames import (
     AssistantMessageEvent,
@@ -8,6 +9,7 @@ from utils.frames import (
     Event,
     ResponseChunkEvent,
     StatusEvent,
+    StatusType,
     ThoughtChunkEvent,
     ThoughtMessageEvent,
     UserMessageEvent,
@@ -105,16 +107,36 @@ class TUI(Client, App):
     current_response = ""
 
     history: list[Event] = []
+
+    def _set_status(self, text: str) -> None:
+        try:
+            status_widget = self.query_one("#status-metrics", Static)
+        except NoMatches:
+            return
+
+        status_widget.update(f"status: {text}")
+
+        status_widget.update(f"status: {text}")
+
+    def _format_status(self, state: StatusType) -> str:
+        mapping = {
+            StatusType.IDLE: "ready",
+            StatusType.RESPONDING: "responding",
+            StatusType.THINKING: "thinking",
+        }
+        return mapping.get(state, state.value)
+
     async def on_mount(self):
+        self._set_status("connecting")
         await self.connect()
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="main-scroll"):
             yield InfoBox()
             yield MessageHistory()
-        with Horizontal(id="status-bar"):
+        with Horizontal(id="status-bar"): # Prototype design: (ctx --  |  [░░░░░░░░░░]  |  14s  |  🌐 0s)
             yield Static(" ⎈ RAGA ", id="status-badge")
-            yield Static(" TODO", id="status-metrics") # Prototype design: (ctx --  |  [░░░░░░░░░░]  |  14s  |  🌐 0s)
+            yield Static("label", id="status-metrics")
         yield InputRow(id="input-row")
     
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -171,12 +193,15 @@ class TUI(Client, App):
     
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
+        self._set_status(self._format_status(event.state))
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
+        self._set_status("disconnected")
     
     async def handle_connect(self) -> None:
         self.log("Connected")
+        self._set_status("connected")
     
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
