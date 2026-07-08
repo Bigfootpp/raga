@@ -7,6 +7,7 @@ from utils.frames import (
     AssistantMessageEvent,
     ErrorEvent,
     Event,
+    InterruptedEvent,
     ResponseChunkEvent,
     StatusEvent,
     StatusType,
@@ -114,7 +115,10 @@ class TUI(Client, App):
         except NoMatches:
             return
 
-        status_widget.update(f"status: {text}")
+        status_widget.update(text)
+    
+    def set_status(self, text: str):
+        self._set_status(f"status: {text}")
 
     def _format_status(self, state: StatusType) -> str:
         mapping = {
@@ -135,7 +139,7 @@ class TUI(Client, App):
             yield Static(" ⎈ RAGA ", id="status-badge")
             yield Static("label", id="status-metrics")
         yield InputRow(id="input-row")
-        self._set_status("connecting")
+        self.set_status("connecting")
     
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
@@ -149,11 +153,11 @@ class TUI(Client, App):
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
-        self._set_status("disconnected")
+        self.set_status("disconnected")
     
     async def handle_connect(self) -> None:
         self.log("Connected")
-        self._set_status("connected")
+        self.set_status("connected")
     
     async def handle_response(self, event: ResponseChunkEvent) -> None:
         self.log(event.chunk)
@@ -199,10 +203,13 @@ class TUI(Client, App):
     
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
-        self._set_status(self._format_status(event.state))
+        self.set_status(self._format_status(event.state))
     
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
+    
+    async def handle_interrupted(self, event: InterruptedEvent) -> None:
+        self._set_status("interrupted")
     
     def update_history(self, history_list: list[Event]):
         history = self.query_one("#message-history", MessageHistory)
