@@ -10,6 +10,7 @@ class StatusType(StrEnum):
 
 class ErrorMessage(StrEnum):
     INVALID_FORMAT = "Invalid format"
+    AGENT_BUSY = "Can't process request: Agent is busy"
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
