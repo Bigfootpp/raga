@@ -1,9 +1,12 @@
+import asyncio
 from typing import AsyncIterator
 
 from agent_core.harness import Harness
 from utils.frames import (
     Action,
     AssistantMessageEvent,
+    ErrorEvent,
+    ErrorMessage,
     Event,
     InterruptAction,
     SendMessageAction,
@@ -28,6 +31,7 @@ EVENT_STATUS_MAPPING: dict[type[Event], StatusEvent] = {
 class Dispatcher:
     def __init__(self) -> None:
         self.harness = Harness()
+        self.lock = asyncio.Lock()
     
     async def _hande_interrupt(self, action: InterruptAction):
         # TODO: implement interrupt command
@@ -68,5 +72,9 @@ class Dispatcher:
     async def dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
             case SendMessageAction():
-                async for event in self._handle_send_message(action):
-                    yield event
+                if not self.lock.locked():
+                    async with self.lock:
+                        async for event in self._handle_send_message(action):
+                            yield event
+                else:
+                    yield ErrorEvent(message=ErrorMessage.AGENT_BUSY)
