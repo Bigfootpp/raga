@@ -116,8 +116,6 @@ class TUI(Client, App):
 
         status_widget.update(f"status: {text}")
 
-        status_widget.update(f"status: {text}")
-
     def _format_status(self, state: StatusType) -> str:
         mapping = {
             StatusType.IDLE: "ready",
