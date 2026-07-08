@@ -74,6 +74,12 @@ class Client:
 
     async def _dispatch(self, event: Event):
         match event:
+            case UserMessageEvent():
+                await self.handle_user_message(event)
+            case AssistantMessageEvent():
+                await self.handle_assistant_message(event)
+            case ThoughtMessageEvent():
+                await self.handle_thought_message(event)
             case ResponseChunkEvent():
                 await self.handle_response(event)
             case ThoughtChunkEvent():
@@ -84,12 +90,6 @@ class Client:
                 await self.handle_error(event)
             case InterruptedEvent():
                 await self.handle_interrupted(event)
-            case UserMessageEvent():
-                await self.handle_user_message(event)
-            case AssistantMessageEvent():
-                await self.handle_assistant_message(event)
-            case ThoughtMessageEvent():
-                await self.handle_thought_message(event)
 
     async def process_input(self, msg: str):
         if self.websocket and self.websocket.state == websockets.State.OPEN:
