@@ -10,7 +10,8 @@ class StatusType(StrEnum):
 
 class ErrorMessage(StrEnum):
     INVALID_FORMAT = "Invalid format"
-    AGENT_BUSY = "Can't process request: Agent is busy"
+    AGENT_RUNNING = "Agent already running"
+    AGENT_NOT_RUNNING = "Agent is not running"
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
@@ -21,6 +22,7 @@ class EventType(StrEnum):
     THOUGHT_MESSAGE = "thought_message"
     STATUS = "status"
     ERROR = "error"
+    INTERRUPTED = "interrupted"
 
 class ActionType(StrEnum):
     SEND_MESSAGE = "send_message"
@@ -65,6 +67,9 @@ class Action(Frame, frozen=True):
 
 
 # SERVER
+class InterruptedEvent(Event, frozen=True):
+    type: Literal[EventType.INTERRUPTED] = EventType.INTERRUPTED
+
 class ErrorEvent(Event, frozen=True):
     type: Literal[EventType.ERROR] = EventType.ERROR
     message: ErrorMessage
@@ -113,6 +118,7 @@ EventUnion = Annotated[
         UserMessageEvent,
         AssistantMessageEvent,
         ThoughtMessageEvent,
+        InterruptedEvent
     ],
     Field(discriminator="type"),
 ]
