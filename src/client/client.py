@@ -6,8 +6,10 @@ import websockets
 from websockets.asyncio.client import ClientConnection, connect
 
 from utils.frames import (
+    Action,
     AssistantMessageEvent,
     Event,
+    InterruptAction,
     InterruptedEvent,
     SendMessageAction,
     StatusEvent,
@@ -90,13 +92,19 @@ class Client:
                 await self.handle_error(event)
             case InterruptedEvent():
                 await self.handle_interrupted(event)
-
-    async def process_input(self, msg: str):
+    
+    async def send(self, action: Action):
         if self.websocket and self.websocket.state == websockets.State.OPEN:
-            action_json = json.dumps(SendMessageAction(text=msg).to_dict())
+            action_json = json.dumps(action.to_dict())
             await self.websocket.send(action_json)
         else:
             raise ConnectionError("Unable to send the message, the client is not connected.")
+
+    async def process_input(self, msg: str):
+        await self.send(SendMessageAction(text=msg))
+    
+    async def interrupt(self):
+        await self.send(InterruptAction())
 
     async def handle_connect(self) -> None: ...
     async def handle_disconnect(self) -> None: ...
