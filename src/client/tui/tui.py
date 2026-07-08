@@ -128,7 +128,7 @@ class TUI(Client, App):
         async with self.status_lock:
             self._set_status(f"status: {text}")
     
-    async def set_interrupted(self):
+    async def trigger_interrupted_status(self):
         async with self.status_lock:
             self._set_status("interrupted")
             await asyncio.sleep(2)
@@ -240,8 +240,7 @@ class TUI(Client, App):
         self.log(event.message)
     
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
-        self.interrupted_show = True
-        self._set_status("interrupted")
+        await self.trigger_interrupted_status()
     
     def update_history(self, history_list: list[Event]):
         history = self.query_one("#message-history", MessageHistory)
