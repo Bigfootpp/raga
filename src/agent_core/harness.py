@@ -5,10 +5,13 @@ from agent_core.agent import Agent
 from agent_core.session import Session, UserContent
 from utils.frames import Event
 
-class AgentBusyError(Exception):
+class AgentAlreadyRunning(Exception):
     pass
 
-class AgentNotBusyError(Exception):
+class AgentNotRunning(Exception):
+    pass
+
+class ExecutionInterrupted(Exception):
     pass
 
 class Harness:
@@ -19,12 +22,18 @@ class Harness:
         self._current_task: Optional[asyncio.Task] = None
     
     async def interrupt(self):
-        if self._current_task and not self._current_task.done():
-            self._current_task.cancel()
+        if not self._current_task or self._current_task.done():
+            raise AgentNotRunning("Agent is not running")
+        
+        self._current_task.cancel()
+        try:
+            await self._current_task
+        except asyncio.CancelledError:
+            pass
 
     async def process_input(self, input: str) -> AsyncIterator[Event]:
         if self.lock.locked():
-            raise AgentBusyError("Agent is busy")
+            raise AgentAlreadyRunning("Agent is already running")
 
         async with self.lock:
             self._current_task = asyncio.current_task()
@@ -36,6 +45,6 @@ class Harness:
                     yield event
             except asyncio.CancelledError:
                 self.session.load_state()
-                raise
+                raise ExecutionInterrupted("The execution was canceled")
             finally:
                 self._current_task = None
