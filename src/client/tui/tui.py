@@ -127,7 +127,6 @@ class TUI(Client, App):
         return mapping.get(state, state.value)
 
     async def on_mount(self):
-        self._set_status("connecting")
         await self.connect()
 
     def compose(self) -> ComposeResult:
@@ -138,6 +137,7 @@ class TUI(Client, App):
             yield Static(" ⎈ RAGA ", id="status-badge")
             yield Static("label", id="status-metrics")
         yield InputRow(id="input-row")
+        self._set_status("connecting")
     
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
