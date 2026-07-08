@@ -8,6 +8,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from utils.frames import (
     AssistantMessageEvent,
     Event,
+    InterruptedEvent,
     SendMessageAction,
     StatusEvent,
     ResponseChunkEvent,
@@ -81,6 +82,8 @@ class Client:
                 await self.handle_status(event)
             case ErrorEvent():
                 await self.handle_error(event)
+            case InterruptedEvent():
+                await self.handle_interrupted(event)
             case UserMessageEvent():
                 await self.handle_user_message(event)
             case AssistantMessageEvent():
@@ -104,6 +107,7 @@ class Client:
     async def handle_thought(self, event: ThoughtChunkEvent) -> None: ...
     async def handle_status(self, event: StatusEvent) -> None: ...
     async def handle_error(self, event: ErrorEvent) -> None: ...
+    async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
 
     async def close(self):
         self._running_connection = False
