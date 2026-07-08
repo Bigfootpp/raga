@@ -147,6 +147,14 @@ class TUI(Client, App):
 
         event.input.value = ""
     
+    async def handle_disconnect(self) -> None:
+        self.log("Disconnected")
+        self._set_status("disconnected")
+    
+    async def handle_connect(self) -> None:
+        self.log("Connected")
+        self._set_status("connected")
+    
     async def handle_response(self, event: ResponseChunkEvent) -> None:
         self.log(event.chunk)
 
@@ -192,14 +200,6 @@ class TUI(Client, App):
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
         self._set_status(self._format_status(event.state))
-    
-    async def handle_disconnect(self) -> None:
-        self.log("Disconnected")
-        self._set_status("disconnected")
-    
-    async def handle_connect(self) -> None:
-        self.log("Connected")
-        self._set_status("connected")
     
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
