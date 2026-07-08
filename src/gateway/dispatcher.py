@@ -1,6 +1,6 @@
 from typing import AsyncIterator
 
-from agent_core.harness import AgentBusyError, Harness
+from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
 from utils.async_utils import aenumerate
 from utils.frames import (
     Action,
@@ -9,6 +9,7 @@ from utils.frames import (
     ErrorMessage,
     Event,
     InterruptAction,
+    InterruptedEvent,
     SendMessageAction,
     StatusEvent,
     ResponseChunkEvent,
@@ -32,9 +33,13 @@ class Dispatcher:
     def __init__(self) -> None:
         self.harness = Harness()
     
-    async def _hande_interrupt(self, action: InterruptAction):
-        # TODO: implement interrupt command
-        pass
+    async def _hande_interrupt(self):
+        try:
+            await self.harness.interrupt()
+            yield InterruptedEvent()
+            yield IDLE_STATUS
+        except AgentNotRunning:
+            yield ErrorEvent(message=ErrorMessage.AGENT_NOT_RUNNING)
     
     async def _handle_send_message(self, action: SendMessageAction) -> AsyncIterator[Event]:
         thinking_chunks: list[str] = []
@@ -66,8 +71,11 @@ class Dispatcher:
                     thinking_chunks.append(event.chunk)
 
                 yield event
-        except AgentBusyError:
-            yield ErrorEvent(message=ErrorMessage.AGENT_BUSY)
+        except AgentAlreadyRunning:
+            yield ErrorEvent(message=ErrorMessage.AGENT_RUNNING)
+            return
+        
+        except ExecutionInterrupted:
             return
         
         yield AssistantMessageEvent(text="".join(final_chunks))
@@ -77,4 +85,7 @@ class Dispatcher:
         match action:
             case SendMessageAction():
                 async for event in self._handle_send_message(action):
+                    yield event
+            case InterruptAction():
+                async for event in self._hande_interrupt():
                     yield event
