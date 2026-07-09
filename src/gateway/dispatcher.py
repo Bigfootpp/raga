@@ -2,7 +2,7 @@ from typing import AsyncIterator
 
 from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
 from utils.async_utils import aenumerate
-from utils.frames import (
+from shared.frames import (
     Action,
     AssistantMessageEvent,
     ErrorEvent,

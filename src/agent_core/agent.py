@@ -1,4 +1,4 @@
-from agent_core.session import Session
+from shared.session import Session
 from agent_core.streaming import Stream
 
 class Agent:

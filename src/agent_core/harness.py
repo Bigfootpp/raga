@@ -2,8 +2,8 @@ import asyncio
 from typing import AsyncIterator, Optional
 
 from agent_core.agent import Agent
-from agent_core.session import Session, ThoughtMessage, UserMessage, AgentMessage
-from utils.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
+from shared.session import Session, ThoughtMessage, UserMessage, AgentMessage
+from shared.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
 
 class AgentAlreadyRunning(Exception):
     pass

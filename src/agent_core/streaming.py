@@ -1,6 +1,6 @@
 import asyncio
 from typing import AsyncIterator
-from utils.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
+from shared.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
 
 MOCK_WAIT_TIME = 0.3
 

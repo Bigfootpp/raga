@@ -8,7 +8,7 @@ from textual.containers import Horizontal, ScrollableContainer
 from textual.css.query import NoMatches
 from textual.events import Key
 from textual.widgets import Input, Static
-from utils.frames import (
+from shared.frames import (
     AssistantMessageEvent,
     ErrorEvent,
     Event,

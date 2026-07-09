@@ -2,7 +2,7 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Input, Label, Static
 
-from utils.frames import AssistantMessageEvent, Event, ThoughtMessageEvent, UserMessageEvent
+from shared.frames import AssistantMessageEvent, Event, ThoughtMessageEvent, UserMessageEvent
 
 LOGO = r"""
                  .                      

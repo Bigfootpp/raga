@@ -6,7 +6,7 @@ from collections.abc import Callable, Awaitable
 import websockets
 from websockets.asyncio.client import ClientConnection, connect
 
-from utils.frames import (
+from shared.frames import (
     Action,
     AssistantMessageEvent,
     Event,
