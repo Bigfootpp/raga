@@ -2,7 +2,7 @@ import asyncio
 from typing import AsyncIterator, Optional
 
 from agent_core.agent import Agent
-from agent_core.session import Session, UserContent
+from agent_core.session import Session, UserMessage
 from utils.frames import Event
 
 class AgentAlreadyRunning(Exception):
@@ -38,8 +38,9 @@ class Harness:
         async with self.lock:
             self._current_task = asyncio.current_task()
 
+            self.session.add_message(UserMessage(input))
             self.session.save_state()
-            self.session.add_message(UserContent(input))
+            # TODO: Append agent message to session
             try:
                 async for event in await self.agent.run():
                     yield event

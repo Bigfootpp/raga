@@ -1,15 +1,17 @@
 class Message:
-    def __init__(self, role: str, input: str):
-        self.role = role
+    pass
+
+class UserMessage(Message):
+    def __init__(self, input: str):
         self.input = input
 
-class UserContent(Message):
+class ThoughtMessage(Message):
     def __init__(self, input: str):
-        super().__init__("user", input)
+        self.input = input
 
-class AgentContent(Message):
+class AgentMessage(Message):
     def __init__(self, input: str):
-        super().__init__("assistant", input)
+        self.input = input
 
 class Session:
     def __init__(self, history: list[Message]):
