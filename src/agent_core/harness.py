@@ -2,8 +2,8 @@ import asyncio
 from typing import AsyncIterator, Optional
 
 from agent_core.agent import Agent
-from agent_core.session import Session, UserMessage
-from utils.frames import Event
+from agent_core.session import Session, ThoughtMessage, UserMessage, AgentMessage
+from utils.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
 
 class AgentAlreadyRunning(Exception):
     pass
@@ -38,12 +38,24 @@ class Harness:
         async with self.lock:
             self._current_task = asyncio.current_task()
 
+            thinking_chunks: list[str] = []
+            final_chunks: list[str] = []
+
             self.session.add_message(UserMessage(input))
             self.session.save_state()
-            # TODO: Append agent message to session
             try:
                 async for event in await self.agent.run():
+                    if isinstance(event, ResponseChunkEvent):
+                        final_chunks.append(event.chunk)
+                    elif isinstance(event, ThoughtChunkEvent):
+                        thinking_chunks.append(event.chunk)
+                        
                     yield event
+
+                if thinking_chunks:
+                    self.session.add_message(ThoughtMessage("".join(thinking_chunks)))
+                if final_chunks:
+                    self.session.add_message(AgentMessage("".join(thinking_chunks)))
             except asyncio.CancelledError:
                 self.session.load_state()
                 raise ExecutionInterrupted("The execution was canceled")
