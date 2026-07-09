@@ -4,7 +4,7 @@ from typing import Optional
 
 from client.client import Client
 from client.tui.widgets import InfoBox, InputRow, MessageHistory
-from shared.messages import AssistantMessage, UserMessage
+from shared.messages import UserMessage
 from shared.session import Session
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
@@ -33,7 +33,7 @@ class TUI(Client, App):
         self.current_response = ""
         self.current_reasoning = ""
         self.status_lock = asyncio.Lock()
-        self.session = Session([])
+        self.session: Session = Session([])
         self.last_escape_time = 0.0
 
     def _set_status(self, text: str) -> None:
@@ -43,6 +43,10 @@ class TUI(Client, App):
             return
 
         status_widget.update(text)
+
+    def _reset_streaming_state(self) -> None:
+        self.current_response = ""
+        self.current_reasoning = ""
     
     async def set_status(self, text: str):
         async with self.status_lock:
@@ -114,32 +118,19 @@ class TUI(Client, App):
         if content is None and reasoning is None:
             return
 
-        if self.session:
-            last_message = self.session[-1]
-            if isinstance(last_message, AssistantMessage):
-                next_message = AssistantMessage(
-                    content=content if content is not None else last_message.content,
-                    reasoning_content=reasoning if reasoning is not None else last_message.reasoning_content,
-                    reasoning=reasoning if reasoning is not None else last_message.reasoning,
-                    tool_calls=last_message.tool_calls,
-                )
-                self.session.history[-1] = next_message
-                return
-
-        next_message = AssistantMessage(content=content, reasoning_content=reasoning, reasoning=reasoning)
-        self.session.add_message(next_message)
+        self.session.upsert_assistant_message(content=content, reasoning=reasoning)
 
     async def handle_response(self, event: ResponseChunkEvent) -> None:
         self.log(event.chunk)
 
-        self.current_response = self.current_response + event.chunk
+        self.current_response += event.chunk
         self._upsert_assistant_message(content=self.current_response)
         self.update_history(self.session)
     
     async def handle_thought(self, event: ThoughtChunkEvent) -> None:
         self.log(event.chunk)
 
-        self.current_reasoning = self.current_reasoning + event.chunk
+        self.current_reasoning += event.chunk
         self._upsert_assistant_message(reasoning=self.current_reasoning)
         self.update_history(self.session)
     
@@ -148,9 +139,7 @@ class TUI(Client, App):
 
         self.session.add_message(UserMessage(content=event.text))
         self.update_history(self.session)
-
-        self.current_response = ""
-        self.current_reasoning = ""
+        self._reset_streaming_state()
     
     async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
         self.log(event.text)
@@ -158,9 +147,7 @@ class TUI(Client, App):
         self.current_response = event.text
         self._upsert_assistant_message(content=self.current_response)
         self.update_history(self.session)
-        
-        self.current_response = ""
-        self.current_reasoning = ""
+        self._reset_streaming_state()
     
     async def handle_thought_message(self, event: ThoughtMessageEvent) -> None:
         self.log(event.text)
@@ -168,7 +155,6 @@ class TUI(Client, App):
         self.current_reasoning = event.text
         self._upsert_assistant_message(reasoning=self.current_reasoning)
         self.update_history(self.session)
-        
         self.current_response = ""
     
     async def handle_status(self, event: StatusEvent) -> None:
@@ -181,7 +167,7 @@ class TUI(Client, App):
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
         await self.trigger_interrupted_status()
     
-    def update_history(self, history_list: Session):
+    def update_history(self, history_list: Session) -> None:
         session = self.query_one("#message-history", MessageHistory)
         session.update_history(history_list)
 
