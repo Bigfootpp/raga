@@ -14,14 +14,15 @@ from textual.widgets import Input, Static
 from shared.frames import (
     AssistantMessageEvent,
     ErrorEvent,
+    ErrorMessage,
     InterruptedEvent,
     ResponseChunkEvent,
     StatusEvent,
-    StatusType,
     ThoughtChunkEvent,
     ThoughtMessageEvent,
     UserMessageEvent,
 )
+from utils import async_utils
 
 INTERRUPT_THRESHOLD = 0.5
 
@@ -33,46 +34,56 @@ class TUI(Client, App):
         self.current_response = ""
         self.current_reasoning = ""
         self.status_lock = asyncio.Lock()
+        self.feedback_lock = asyncio.Lock()
         self.session: Session = Session([])
         self.last_escape_time = 0.0
 
-    def _set_status(self, text: str) -> None:
-        try:
-            status_widget = self.query_one("#status-metrics", Static)
-        except NoMatches:
-            return
-
-        status_widget.update(text)
-
-    def _reset_streaming_state(self) -> None:
+    def reset_streaming_state(self) -> None:
         self.current_response = ""
         self.current_reasoning = ""
     
-    async def set_status(self, text: str):
-        async with self.status_lock:
-            self._set_status(f"status: {text}")
-    
-    async def trigger_interrupted_status(self):
-        async with self.status_lock:
-            self._set_status("interrupted")
-            await asyncio.sleep(2)
+    @async_utils.background_task
+    async def show_feedback(self, message: str, *, duration: float = 1) -> None:
+        try:
+            banner = self.query_one("#feedback-banner", Static)
+        except NoMatches:
+            return
 
-    def _format_status(self, state: StatusType) -> str:
-        mapping = {
-            StatusType.IDLE: "ready",
-            StatusType.RESPONDING: "responding",
-            StatusType.THINKING: "thinking",
-        }
-        return mapping.get(state, state.value)
+        async with self.feedback_lock:
+            banner.update(message)
+            banner.styles.display = "block"
+            await asyncio.sleep(duration)
+            await self._hide_feedback()
+    
+    async def _hide_feedback(self) -> None:
+        try:
+            banner = self.query_one("#feedback-banner", Static)
+        except NoMatches:
+            return
+
+        banner.update("")
+        banner.styles.display = "none"
+    
+    @async_utils.background_task
+    async def set_status(self, text: str, lock_duration: int = 0):
+        async with self.status_lock:
+            try:
+                status_widget = self.query_one("#status-metrics", Static)
+            except NoMatches:
+                return
+
+            status_widget.update(text)
+            await asyncio.sleep(lock_duration)
 
     async def on_mount(self):
-        await self.set_status("connecting")
+        self.set_status("connecting")
         await self.connect()
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="main-scroll"):
             yield InfoBox()
             yield MessageHistory()
+        yield Static("", id="feedback-banner")
         with Horizontal(id="status-bar"): # Prototype design: (ctx --  |  [░░░░░░░░░░]  |  14s  |  🌐 0s)
             yield Static(" ⎈ RAGA ", id="status-badge")
             yield Static("label", id="status-metrics")
@@ -95,26 +106,26 @@ class TUI(Client, App):
         if event.key == "escape":
             current_time = time.time()
             if current_time - self.last_escape_time < INTERRUPT_THRESHOLD:
-                await self.interrupt_agent()
+                await self.interrupt()
                 self.last_escape_time = 0.0
             else:
                 self.last_escape_time = current_time
 
-    async def interrupt_agent(self) -> None:
+    async def interrupt(self) -> None:
         try:
-            await self.interrupt()
+            await super().interrupt()
         except ConnectionError:
             pass
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
-        await self.set_status("disconnected")
+        self.set_status("disconnected")
     
     async def handle_connect(self) -> None:
         self.log("Connected")
-        await self.set_status("connected")
+        self.set_status("connected")
     
-    def _upsert_assistant_message(self, *, content: Optional[str] = None, reasoning: Optional[str] = None) -> None:
+    def upsert_assistant_message(self, *, content: Optional[str] = None, reasoning: Optional[str] = None) -> None:
         if content is None and reasoning is None:
             return
 
@@ -124,14 +135,14 @@ class TUI(Client, App):
         self.log(event.chunk)
 
         self.current_response += event.chunk
-        self._upsert_assistant_message(content=self.current_response)
+        self.upsert_assistant_message(content=self.current_response)
         self.update_history(self.session)
     
     async def handle_thought(self, event: ThoughtChunkEvent) -> None:
         self.log(event.chunk)
 
         self.current_reasoning += event.chunk
-        self._upsert_assistant_message(reasoning=self.current_reasoning)
+        self.upsert_assistant_message(reasoning=self.current_reasoning)
         self.update_history(self.session)
     
     async def handle_user_message(self, event: UserMessageEvent) -> None:
@@ -140,37 +151,40 @@ class TUI(Client, App):
         self.session.add_message(UserMessage(content=event.text))
         self.session.save_state()
         self.update_history(self.session)
-        self._reset_streaming_state()
+        self.reset_streaming_state()
     
     async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
         self.log(event.text)
 
         self.current_response = event.text
-        self._upsert_assistant_message(content=self.current_response)
+        self.upsert_assistant_message(content=self.current_response)
         self.session.save_state()
         self.update_history(self.session)
-        self._reset_streaming_state()
+        self.reset_streaming_state()
     
     async def handle_thought_message(self, event: ThoughtMessageEvent) -> None:
         self.log(event.text)
 
         self.current_reasoning = event.text
-        self._upsert_assistant_message(reasoning=self.current_reasoning)
+        self.upsert_assistant_message(reasoning=self.current_reasoning)
         self.update_history(self.session)
         self.current_response = ""
     
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
-        await self.set_status(self._format_status(event.state))
+        self.set_status(f"status: {event.state}")
     
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
+
+        if event.message == ErrorMessage.AGENT_RUNNING:
+            self.show_feedback(ErrorMessage.AGENT_RUNNING)
     
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
         self.session.load_state()
         self.update_history(self.session)
-        self._reset_streaming_state()
-        await self.trigger_interrupted_status()
+        self.reset_streaming_state()
+        self.set_status("interrupted", lock_duration=2)
     
     def update_history(self, history_list: Session) -> None:
         session = self.query_one("#message-history", MessageHistory)

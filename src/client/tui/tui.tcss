@@ -47,6 +47,15 @@ Screen {
 }
 
 
+#feedback-banner {
+    display: none;
+    width: 1fr;
+    padding: 0 1;
+    color: #fbbf24;
+    border: round #fbbf24;
+    height: auto;
+}
+
 #message-history {
     height: auto;
     padding: 1;
