@@ -5,6 +5,9 @@ class Session:
         self.history = history
         self.state = []
     
+    def __iter__(self):
+        return iter(self.history)
+
     def save_state(self):
         self.state = self.history.copy()
     
