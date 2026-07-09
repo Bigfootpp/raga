@@ -1,8 +1,8 @@
+from shared.messages import AssistantMessage, UserMessage
+from shared.session import Session
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Input, Label, Static
-
-from shared.frames import AssistantMessageEvent, Event, ThoughtMessageEvent, UserMessageEvent
 
 LOGO = r"""
                  .                      
@@ -72,7 +72,7 @@ class MessageHistory(Container):
     def __init__(self, id="message-history", **kwargs):
         super().__init__(id=id, **kwargs)
 
-    def update_history(self, history_list: list[Event]) -> None:
+    def update_history(self, history_list: Session) -> None:
         for queried in (
             self.query(UserMessageContainer),
             self.query(AgentMessageContainer),
@@ -83,12 +83,15 @@ class MessageHistory(Container):
 
         for message in history_list:
             match message:
-                case UserMessageEvent():
-                    self.mount(UserMessageContainer(message.text))
-                case AssistantMessageEvent():
-                    self.mount(AgentMessageContainer(message.text))
-                case ThoughtMessageEvent():
-                    self.mount(ThinkingMessageContainer(message.text))
+                case UserMessage():
+                    self.mount(UserMessageContainer(message.content))
+                case AssistantMessage():
+                    content = message.content
+                    reasoning = message.reasoning or message.reasoning_content
+                    if reasoning:
+                        self.mount(ThinkingMessageContainer(reasoning))
+                    if content:
+                        self.mount(AgentMessageContainer(content))
 
 
 class InputRow(Horizontal):

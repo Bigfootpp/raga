@@ -1,8 +1,11 @@
 import asyncio
 import time
+from typing import Optional
 
 from client.client import Client
 from client.tui.widgets import InfoBox, InputRow, MessageHistory
+from shared.messages import AssistantMessage, UserMessage
+from shared.session import Session
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
 from textual.css.query import NoMatches
@@ -11,7 +14,6 @@ from textual.widgets import Input, Static
 from shared.frames import (
     AssistantMessageEvent,
     ErrorEvent,
-    Event,
     InterruptedEvent,
     ResponseChunkEvent,
     StatusEvent,
@@ -26,10 +28,13 @@ INTERRUPT_THRESHOLD = 0.5
 class TUI(Client, App):
     CSS_PATH = "tui.tcss"
 
-    current_response = ""
-    status_lock = asyncio.Lock()
-    history: list[Event] = []
-    last_escape_time = 0
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_response = ""
+        self.current_reasoning = ""
+        self.status_lock = asyncio.Lock()
+        self.session = Session([])
+        self.last_escape_time = 0.0
 
     def _set_status(self, text: str) -> None:
         try:
@@ -105,45 +110,64 @@ class TUI(Client, App):
         self.log("Connected")
         await self.set_status("connected")
     
+    def _upsert_assistant_message(self, *, content: Optional[str] = None, reasoning: Optional[str] = None) -> None:
+        if content is None and reasoning is None:
+            return
+
+        if self.session:
+            last_message = self.session[-1]
+            if isinstance(last_message, AssistantMessage):
+                next_message = AssistantMessage(
+                    content=content if content is not None else last_message.content,
+                    reasoning_content=reasoning if reasoning is not None else last_message.reasoning_content,
+                    reasoning=reasoning if reasoning is not None else last_message.reasoning,
+                    tool_calls=last_message.tool_calls,
+                )
+                self.session.history[-1] = next_message
+                return
+
+        next_message = AssistantMessage(content=content, reasoning_content=reasoning, reasoning=reasoning)
+        self.session.add_message(next_message)
+
     async def handle_response(self, event: ResponseChunkEvent) -> None:
         self.log(event.chunk)
 
         self.current_response = self.current_response + event.chunk
-        
-        history_copy = self.history.copy()
-        history_copy.append(AssistantMessageEvent(text=self.current_response))
-        self.update_history(history_copy)
+        self._upsert_assistant_message(content=self.current_response)
+        self.update_history(self.session)
     
     async def handle_thought(self, event: ThoughtChunkEvent) -> None:
         self.log(event.chunk)
 
-        self.current_response = self.current_response + event.chunk
-        
-        history_copy = self.history.copy()
-        history_copy.append(ThoughtMessageEvent(text=self.current_response))
-        self.update_history(history_copy)
+        self.current_reasoning = self.current_reasoning + event.chunk
+        self._upsert_assistant_message(reasoning=self.current_reasoning)
+        self.update_history(self.session)
     
     async def handle_user_message(self, event: UserMessageEvent) -> None:
         self.log(event.text)
 
-        self.history.append(event)
-        self.update_history(self.history)
+        self.session.add_message(UserMessage(content=event.text))
+        self.update_history(self.session)
 
         self.current_response = ""
+        self.current_reasoning = ""
     
     async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
         self.log(event.text)
 
-        self.history.append(event)
-        self.update_history(self.history)
+        self.current_response = event.text
+        self._upsert_assistant_message(content=self.current_response)
+        self.update_history(self.session)
         
         self.current_response = ""
+        self.current_reasoning = ""
     
     async def handle_thought_message(self, event: ThoughtMessageEvent) -> None:
         self.log(event.text)
 
-        self.history.append(event)
-        self.update_history(self.history)
+        self.current_reasoning = event.text
+        self._upsert_assistant_message(reasoning=self.current_reasoning)
+        self.update_history(self.session)
         
         self.current_response = ""
     
@@ -157,9 +181,9 @@ class TUI(Client, App):
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
         await self.trigger_interrupted_status()
     
-    def update_history(self, history_list: list[Event]):
-        history = self.query_one("#message-history", MessageHistory)
-        history.update_history(history_list)
+    def update_history(self, history_list: Session):
+        session = self.query_one("#message-history", MessageHistory)
+        session.update_history(history_list)
 
         scroll = self.query_one("#main-scroll", ScrollableContainer)
         scroll.scroll_end(animate=False)
