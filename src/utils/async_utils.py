@@ -1,6 +1,11 @@
-from typing import AsyncIterable, AsyncIterator, TypeVar
+import asyncio
+import functools
+from collections.abc import Coroutine
+from typing import Any, AsyncIterable, AsyncIterator, Callable, TypeVar
 
 T = TypeVar("T")
+
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 async def aenumerate(
     async_iterable: AsyncIterable[T], 
@@ -11,3 +16,16 @@ async def aenumerate(
     async for item in async_iterable_iter:
         yield i, item
         i += 1
+
+def fire_and_forget(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+def background_task(func: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., asyncio.Task[T]]:
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> asyncio.Task[T]:
+        coro = func(*args, **kwargs)
+        return fire_and_forget(coro)
+    return wrapper
