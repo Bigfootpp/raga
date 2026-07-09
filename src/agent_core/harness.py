@@ -2,7 +2,8 @@ import asyncio
 from typing import AsyncIterator, Optional
 
 from agent_core.agent import Agent
-from shared.session import Session, ThoughtMessage, UserMessage, AgentMessage
+from shared.session import Session
+from shared.messages import AssistantMessage, UserMessage
 from shared.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
 
 class AgentAlreadyRunning(Exception):
@@ -41,7 +42,7 @@ class Harness:
             thinking_chunks: list[str] = []
             final_chunks: list[str] = []
 
-            self.session.add_message(UserMessage(input))
+            self.session.add_message(UserMessage(content=input))
             self.session.save_state()
             try:
                 async for event in await self.agent.run():
@@ -51,11 +52,14 @@ class Harness:
                         thinking_chunks.append(event.chunk)
                         
                     yield event
+                
 
-                if thinking_chunks:
-                    self.session.add_message(ThoughtMessage("".join(thinking_chunks)))
-                if final_chunks:
-                    self.session.add_message(AgentMessage("".join(thinking_chunks)))
+                if thinking_chunks or final_chunks:
+                    self.session.add_message(AssistantMessage(
+                        reasoning_content="".join(thinking_chunks) if thinking_chunks else None,
+                        reasoning="".join(thinking_chunks) if thinking_chunks else None,
+                        content="".join(final_chunks) if final_chunks else None
+                    ))
             except asyncio.CancelledError:
                 self.session.load_state()
                 raise ExecutionInterrupted("The execution was canceled")

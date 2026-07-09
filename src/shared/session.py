@@ -1,17 +1,4 @@
-class Message:
-    pass
-
-class UserMessage(Message):
-    def __init__(self, input: str):
-        self.input = input
-
-class ThoughtMessage(Message):
-    def __init__(self, input: str):
-        self.input = input
-
-class AgentMessage(Message):
-    def __init__(self, input: str):
-        self.input = input
+from shared.messages import Message
 
 class Session:
     def __init__(self, history: list[Message]):

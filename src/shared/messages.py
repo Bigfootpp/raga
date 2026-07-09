@@ -44,6 +44,8 @@ class UserMessage(Message, frozen=True):
 class AssistantMessage(Message, frozen=True):
     role: Literal[RoleType.ASSISTANT] = RoleType.ASSISTANT
     content: Optional[str] = None
+    reasoning: Optional[str] = None
+    reasoning_content: Optional[str] = None
     tool_calls: Optional[list[ToolCall]] = None
 
 
