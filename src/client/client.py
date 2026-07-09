@@ -1,6 +1,7 @@
 import asyncio
 import json
-from typing import Optional
+from typing import Optional, Any, Type
+from collections.abc import Callable, Awaitable
 
 import websockets
 from websockets.asyncio.client import ClientConnection, connect
@@ -31,6 +32,17 @@ class Client:
         self.websocket: Optional[ClientConnection] = None
         self._listen_task: Optional[asyncio.Task] = None
         self._running_connection: bool = False
+        self._background_tasks = set()
+        self._handlers: dict[Type[Event], Callable[[Any], Awaitable[None]]] = {
+            UserMessageEvent: self.handle_user_message,
+            AssistantMessageEvent: self.handle_assistant_message,
+            ThoughtMessageEvent: self.handle_thought_message,
+            ResponseChunkEvent: self.handle_response,
+            ThoughtChunkEvent: self.handle_thought,
+            StatusEvent: self.handle_status,
+            ErrorEvent: self.handle_error,
+            InterruptedEvent: self.handle_interrupted,
+        }
 
     async def connect(self):
         if self._running_connection:
@@ -75,23 +87,9 @@ class Client:
                 pass
 
     async def _dispatch(self, event: Event):
-        match event:
-            case UserMessageEvent():
-                await self.handle_user_message(event)
-            case AssistantMessageEvent():
-                await self.handle_assistant_message(event)
-            case ThoughtMessageEvent():
-                await self.handle_thought_message(event)
-            case ResponseChunkEvent():
-                await self.handle_response(event)
-            case ThoughtChunkEvent():
-                await self.handle_thought(event)
-            case StatusEvent():
-                await self.handle_status(event)
-            case ErrorEvent():
-                await self.handle_error(event)
-            case InterruptedEvent():
-                await self.handle_interrupted(event)
+        handler = self._handlers.get(type(event))
+        if handler:
+            await handler(event)
     
     async def send(self, action: Action):
         if self.websocket and self.websocket.state == websockets.State.OPEN:
