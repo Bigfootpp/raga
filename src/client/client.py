@@ -67,8 +67,14 @@ class Client:
             finally:
                 if self.websocket:
                     self.connected = False
+                    websocket = self.websocket
                     self.websocket = None
-                    await self.handle_disconnect()
+                    try:
+                        if websocket.state == websockets.State.OPEN:
+                            await websocket.close()
+                    except Exception:
+                        pass
+                await self.handle_disconnect()
 
             if self._running_connection:
                 await asyncio.sleep(self.reconnect_delay)
