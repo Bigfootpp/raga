@@ -204,10 +204,13 @@ class TUI(Client, App):
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
 
-        if event.message == ErrorMessage.AGENT_RUNNING:
-            self.show_feedback(ErrorMessage.AGENT_RUNNING, duration=2)
-        else:
-            self.show_feedback(str(event.message), duration=2)
+        match event.message:
+            case ErrorMessage.AGENT_RUNNING:
+                self.show_feedback(ErrorMessage.AGENT_RUNNING, duration=2)
+            case ErrorMessage.AGENT_NOT_RUNNING:
+                pass
+            case _:
+                self.show_feedback(str(event.message), duration=2)
     
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
         self.session.load_state()
