@@ -42,11 +42,34 @@ class TUI(Client, App):
         self.current_response = ""
         self.current_reasoning = ""
     
+    def _get_feedback_banner(self) -> Optional[Static]:
+        try:
+            return self.query_one("#feedback-banner", Static)
+        except NoMatches:
+            return None
+
+    def _get_status_widget(self) -> Optional[Static]:
+        try:
+            return self.query_one("#status-metrics", Static)
+        except NoMatches:
+            return None
+
+    def _get_message_history_widget(self) -> Optional[MessageHistory]:
+        try:
+            return self.query_one("#message-history", MessageHistory)
+        except NoMatches:
+            return None
+
+    def _get_scroll_container(self) -> Optional[ScrollableContainer]:
+        try:
+            return self.query_one("#main-scroll", ScrollableContainer)
+        except NoMatches:
+            return None
+
     @async_utils.background_task
     async def show_feedback(self, message: str, *, duration: float = 1) -> None:
-        try:
-            banner = self.query_one("#feedback-banner", Static)
-        except NoMatches:
+        banner = self._get_feedback_banner()
+        if banner is None:
             return
 
         async with self.feedback_lock:
@@ -56,9 +79,8 @@ class TUI(Client, App):
             await self._hide_feedback()
     
     async def _hide_feedback(self) -> None:
-        try:
-            banner = self.query_one("#feedback-banner", Static)
-        except NoMatches:
+        banner = self._get_feedback_banner()
+        if banner is None:
             return
 
         banner.update("")
@@ -67,9 +89,8 @@ class TUI(Client, App):
     @async_utils.background_task
     async def set_status(self, text: str, lock_duration: int = 0):
         async with self.status_lock:
-            try:
-                status_widget = self.query_one("#status-metrics", Static)
-            except NoMatches:
+            status_widget = self._get_status_widget()
+            if status_widget is None:
                 return
 
             status_widget.update(text)
@@ -94,11 +115,16 @@ class TUI(Client, App):
 
         if not text:
             return
+
+        if not self.connected:
+            self.show_feedback("Not connected", duration=2)
+            event.input.value = ""
+            return
         
         try:
             await self.process_input(text)
         except ConnectionError:
-            pass
+            self.show_feedback("Connection lost", duration=2)
 
         event.input.value = ""
     
@@ -119,6 +145,7 @@ class TUI(Client, App):
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
+        self.reset_streaming_state()
         self.set_status("disconnected")
     
     async def handle_connect(self) -> None:
@@ -178,7 +205,9 @@ class TUI(Client, App):
         self.log(event.message)
 
         if event.message == ErrorMessage.AGENT_RUNNING:
-            self.show_feedback(ErrorMessage.AGENT_RUNNING)
+            self.show_feedback(ErrorMessage.AGENT_RUNNING, duration=2)
+        else:
+            self.show_feedback(str(event.message), duration=2)
     
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
         self.session.load_state()
@@ -187,11 +216,15 @@ class TUI(Client, App):
         self.set_status("interrupted", lock_duration=2)
     
     def update_history(self, history_list: Session) -> None:
-        session = self.query_one("#message-history", MessageHistory)
+        session = self._get_message_history_widget()
+        if session is None:
+            return
+
         session.update_history(history_list)
 
-        scroll = self.query_one("#main-scroll", ScrollableContainer)
-        scroll.scroll_end(animate=False)
+        scroll = self._get_scroll_container()
+        if scroll is not None:
+            scroll.scroll_end(animate=False)
 
 if __name__ == "__main__":
     app = TUI()
