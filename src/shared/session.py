@@ -5,8 +5,8 @@ from shared.messages import AssistantMessage, Message
 
 class Session:
     def __init__(self, history: list[Message]):
-        self.history = history
-        self.state: list[Message] = []
+        self.history = history.copy()
+        self.state: list[Message] = history.copy()
 
     def __iter__(self) -> Iterator[Message]:
         return iter(self.history)
@@ -29,7 +29,8 @@ class Session:
         self.history = self.state.copy()
 
     def load_history(self, history: list[Message]) -> None:
-        self.history = history
+        self.history = history.copy()
+        self.state = history.copy()
 
     def add_message(self, message: Message) -> None:
         self.history.append(message)
