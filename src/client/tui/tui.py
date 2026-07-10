@@ -176,7 +176,7 @@ class TUI(Client, App):
         self.log(event.text)
 
         self.session.add_message(UserMessage(content=event.text))
-        self.session.save_state()
+        self.session.record()
         self.update_history(self.session)
         self.reset_streaming_state()
     
@@ -185,7 +185,7 @@ class TUI(Client, App):
 
         self.current_response = event.text
         self.upsert_assistant_message(content=self.current_response)
-        self.session.save_state()
+        self.session.record()
         self.update_history(self.session)
         self.reset_streaming_state()
     
@@ -213,7 +213,7 @@ class TUI(Client, App):
                 self.show_feedback(str(event.message), duration=2)
     
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
-        self.session.load_state()
+        self.session.revert()
         self.update_history(self.session)
         self.reset_streaming_state()
         self.set_status("interrupted", lock_duration=2)

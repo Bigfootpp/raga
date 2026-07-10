@@ -46,7 +46,7 @@ class Harness:
             final_chunks: list[str] = []
 
             self.session.add_message(UserMessage(content=input))
-            self.session.save_state()
+            self.session.record()
             try:
                 async for event in await self.agent.run():
                     if isinstance(event, ResponseChunkEvent):
@@ -64,7 +64,7 @@ class Harness:
                         content="".join(final_chunks) if final_chunks else None
                     ))
             except asyncio.CancelledError:
-                self.session.load_state()
+                self.session.revert()
                 raise ExecutionInterrupted("The execution was canceled")
             finally:
                 self._current_task = None

@@ -23,10 +23,10 @@ class Session:
         self.state = self.history.copy()
         return self_copy
 
-    def save_state(self) -> None:
+    def record(self) -> None:
         self.state = self.history.copy()
 
-    def load_state(self) -> None:
+    def revert(self) -> None:
         self.history = self.state.copy()
 
     def load_history(self, history: list[Message]) -> None:
