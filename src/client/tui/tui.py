@@ -35,7 +35,7 @@ class TUI(Client, App):
         self.current_reasoning = ""
         self.status_lock = asyncio.Lock()
         self.feedback_lock = asyncio.Lock()
-        self.session: Session = Session([])
+        self.session: Session = Session()
         self.last_escape_time = 0.0
 
     def reset_streaming_state(self) -> None:

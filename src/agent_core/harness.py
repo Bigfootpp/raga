@@ -17,7 +17,7 @@ class ExecutionInterrupted(Exception):
 
 class Harness:
     def __init__(self):
-        self.session = Session([])
+        self.session = Session()
         self.agent = Agent(self.session)
         self.lock = asyncio.Lock()
         self._current_task: Optional[asyncio.Task] = None
