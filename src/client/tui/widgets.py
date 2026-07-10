@@ -1,6 +1,8 @@
-from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static, Label
+from shared.messages import AssistantMessage, UserMessage
+from shared.session import Session
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
+from textual.widgets import Input, Label, Static
 
 LOGO = r"""
                  .                      
@@ -20,6 +22,7 @@ LOGO = r"""
                   BBq                                                                              
 """
 
+
 class InfoBox(Container):
     def __init__(self, id="info-box", **kwargs):
         super().__init__(id=id, **kwargs)
@@ -32,7 +35,8 @@ class InfoBox(Container):
         with Vertical(id="right-pane"):
             yield Label("Available Tools", classes="section-title")
 
-class UserMessage(Container):
+
+class UserMessageContainer(Container):
     def __init__(self, text: str, **kwargs) -> None:
         super().__init__(classes="message-box", **kwargs)
         self.text = text
@@ -41,7 +45,20 @@ class UserMessage(Container):
         yield Label("USER", classes="user-message-sender")
         yield Label(self.text, classes="user-message-content")
 
-class AgentMessage(Container):
+
+class ThinkingMessageContainer(Container):
+    def __init__(self, text: str, **kwargs) -> None:
+        super().__init__(classes="thinking-container", **kwargs)
+        self.text = text
+
+    def compose(self) -> ComposeResult:
+        header = Static(classes="thinking-header")
+        header.border_title = "thinking"
+        yield header
+        yield Label(self.text, classes="thinking-content")
+
+
+class AgentMessageContainer(Container):
     def __init__(self, text: str, **kwargs) -> None:
         super().__init__(classes="message-box", **kwargs)
         self.text = text
@@ -50,55 +67,34 @@ class AgentMessage(Container):
         yield Label("AGENT", classes="agent-message-sender")
         yield Label(self.text, classes="agent-message-content")
 
+
 class MessageHistory(Container):
     def __init__(self, id="message-history", **kwargs):
         super().__init__(id=id, **kwargs)
 
-    def update_history(self, history_list: list[str]) -> None:
-        for message_widget in self.query(UserMessage):
-            message_widget.remove()
+    def update_history(self, history_list: Session) -> None:
+        for queried in (
+            self.query(UserMessageContainer),
+            self.query(AgentMessageContainer),
+            self.query(ThinkingMessageContainer),
+        ):
+            for message_widget in queried:
+                message_widget.remove()
 
-        for message_widget in self.query(AgentMessage):
-            message_widget.remove()
+        for message in history_list:
+            match message:
+                case UserMessage():
+                    self.mount(UserMessageContainer(message.content))
+                case AssistantMessage():
+                    content = message.content
+                    reasoning = message.reasoning or message.reasoning_content
+                    if reasoning:
+                        self.mount(ThinkingMessageContainer(reasoning))
+                    if content:
+                        self.mount(AgentMessageContainer(content))
 
-        for text in history_list:
-            self.mount(UserMessage(text))
-            self.mount(AgentMessage(text))
-    
+
 class InputRow(Horizontal):
     def compose(self) -> ComposeResult:
         yield Static("> ", id="prompt-char")
         yield Input(placeholder="Ask RAGA something...", id="user-input").focus()
-
-class RagaTUI(App):
-    history: list[str] = []
-    CSS_PATH = "tui.tcss"
-
-    def compose(self) -> ComposeResult:
-        with ScrollableContainer(id="main-scroll"):
-            yield InfoBox()
-            yield MessageHistory()
-        with Horizontal(id="status-bar"):
-            yield Static(" ⎈ RAGA ", id="status-badge")
-            yield Static(" TODO", id="status-metrics") # Prototype design: (ctx --  |  [░░░░░░░░░░]  |  14s  |  🌐 0s)
-        yield InputRow(id="input-row")
-    
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
-
-        if not text:
-            return
-
-        self.history.append(text)
-
-        history = self.query_one("#message-history", MessageHistory)
-        history.update_history(self.history)
-
-        event.input.value = ""
-
-        scroll = self.query_one("#main-scroll", ScrollableContainer)
-        scroll.scroll_end(animate=False)
-
-if __name__ == "__main__":
-    app = RagaTUI()
-    app.run()

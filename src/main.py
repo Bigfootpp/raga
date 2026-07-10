@@ -1,13 +1,19 @@
 import argparse
-from tui import RagaTUI
+from client.tui.tui import TUI
 import sys
+import uvicorn
 
 def start_server():
-    print("Starting Raga server...")
+    uvicorn.run(
+        "gateway.server:app",
+        host="127.0.0.1", 
+        port=8000, 
+        reload=True
+    )
 
 
 def start_tui():
-    app = RagaTUI()
+    app = TUI()
     app.run()
 
 
@@ -20,9 +26,7 @@ def main():
         dest="command", help="Available commands"
     )
 
-    subparsers.add_parser(
-        "serve", help="Starts the agent server"
-    )
+    subparsers.add_parser("serve", help="Starts the agent server")
 
     subparsers.add_parser("tui", help="Launches the terminal interface")
 
