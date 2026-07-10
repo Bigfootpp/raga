@@ -1,10 +1,9 @@
-import asyncio
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
 
 from gateway.dispatcher import Dispatcher
 from pydantic import ValidationError
 from shared.frames import Action, ErrorEvent, ErrorMessage, to_action
+from utils import async_utils
 
 app = FastAPI()
 
@@ -35,7 +34,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception:
                     return True
                 return False
-
+    
+    @async_utils.background_task
     async def handle(action_json: str):
         try:
             action: Action = to_action(action_json)
@@ -50,7 +50,7 @@ async def websocket_endpoint(websocket: WebSocket):
     while True:
         try:
             action: str = await websocket.receive_text()
-            asyncio.create_task(handle(action_json=action))
+            handle(action_json=action)
         except Exception as e:
             need_break = await handle_error(e=e)
             if need_break:
