@@ -33,6 +33,9 @@ class Harness:
             pass
 
     async def process_input(self, input: str) -> AsyncIterator[Event]:
+        if not input or not input.strip():
+            return
+
         if self.lock.locked():
             raise AgentAlreadyRunning("Agent is already running")
 
