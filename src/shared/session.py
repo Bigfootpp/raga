@@ -1,11 +1,16 @@
-from typing import Iterator, SupportsIndex
+from typing import Iterator, Optional, SupportsIndex
 
 from shared.messages import AssistantMessage, Message
+from aiosqlite import Connection
 
+class SessionManager():
+    def __init__(self, path) -> None:
+        self.db = None
 
 class Session:
     def __init__(self):
         self.history = []
+        self.db: Optional[Connection] = None
         self.state: list[Message] = []
 
     def __iter__(self) -> Iterator[Message]:
