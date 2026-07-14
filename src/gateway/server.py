@@ -11,11 +11,11 @@ app = FastAPI()
 async def health_check():
     return {"status": "ok", "message": "Raga is online"}
 
+dispatcher = Dispatcher()
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-
-    dispatcher = Dispatcher()
 
     async def handle_error(e: Exception) -> bool:
         print(f"Error: ({e.__class__.__name__}): {e}")
