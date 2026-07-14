@@ -15,18 +15,19 @@ class ErrorMessage(StrEnum):
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
-    RESPONSE = "response"
-    THOUGHT = "thought"
-    USER_MESSAGE = "user_message"
-    ASSISTANT_MESSAGE = "assistant_message"
-    THOUGHT_MESSAGE = "thought_message"
-    STATUS = "status"
-    ERROR = "error"
-    INTERRUPTED = "interrupted"
+    RESPONSE = "chat:streaming:response"
+    THOUGHT = "chat:streaming:thought"
+    USER_MESSAGE = "chat:message:user"
+    ASSISTANT_MESSAGE = "chat:message:assistant"
+    THOUGHT_MESSAGE = "chat:message:thought"
+    STATUS = "chat:status"
+    ERROR = "chat:error"
+    INTERRUPTED = "chat:interrupted"
 
 class ActionType(StrEnum):
-    SEND_MESSAGE = "send_message"
-    INTERRUPT = "interrupt"
+    SESSION_SUBSCRIBE = "sessions:subscribe"
+    SEND_MESSAGE = "chat:send"
+    INTERRUPT = "chat:interrupt"
 
 FrameType = EventType | ActionType
 
