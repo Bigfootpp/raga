@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from agent_core.database import SessionRepository
@@ -6,6 +7,10 @@ from agent_core.session import Session
 class SessionManager:
     def __init__(self, repo: SessionRepository):
         self._repo = repo
+    
+    @classmethod
+    async def create(cls, path: Path) -> "SessionManager":
+        return cls(await SessionRepository.create(path=path))
 
     async def new_session(self, title: str = "New Session") -> Session:
         session_id = await self._repo.create_session(title)
