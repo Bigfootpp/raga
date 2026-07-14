@@ -2,7 +2,7 @@ import asyncio
 from typing import AsyncIterator, Optional
 
 from agent_core.agent import Agent
-from shared.session import Session
+from agent_core.session import Session
 from shared.messages import AssistantMessage, UserMessage
 from shared.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
 

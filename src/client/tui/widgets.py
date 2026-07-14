@@ -1,5 +1,5 @@
 from shared.messages import AssistantMessage, UserMessage
-from shared.session import Session
+from agent_core.session import Session
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Input, Label, Static

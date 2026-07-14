@@ -5,7 +5,7 @@ from typing import Optional
 from client.client import Client
 from client.tui.widgets import InfoBox, InputRow, MessageHistory
 from shared.messages import UserMessage
-from shared.session import Session
+from agent_core.session import Session
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
 from textual.css.query import NoMatches

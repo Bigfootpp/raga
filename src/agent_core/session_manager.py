@@ -1,7 +1,7 @@
 from typing import Optional
 
-from shared.database import SessionRepository
-from shared.session import Session
+from agent_core.database import SessionRepository
+from agent_core.session import Session
 
 class SessionManager:
     def __init__(self, repo: SessionRepository):
