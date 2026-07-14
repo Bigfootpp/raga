@@ -1,9 +1,10 @@
 import asyncio
 import functools
 from collections.abc import Coroutine
-from typing import Any, AsyncIterable, AsyncIterator, Callable, TypeVar
+from typing import Any, AsyncIterable, AsyncIterator, Callable, TypeVar, ParamSpec
 
 T = TypeVar("T")
+P = ParamSpec("P")
 
 _background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -23,9 +24,9 @@ def fire_and_forget(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
     task.add_done_callback(_background_tasks.discard)
     return task
 
-def background_task(func: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., asyncio.Task[T]]:
+def background_task(func: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, asyncio.Task[T]]:
     @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> asyncio.Task[T]:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> asyncio.Task[T]:
         coro = func(*args, **kwargs)
         return fire_and_forget(coro)
     return wrapper
