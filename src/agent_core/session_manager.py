@@ -4,6 +4,9 @@ from typing import Optional
 from agent_core.database import SessionRepository
 from agent_core.session import Session
 
+class SessionNotFound(Exception):
+    pass
+
 class SessionManager:
     def __init__(self, repo: SessionRepository):
         self._repo = repo
@@ -16,10 +19,10 @@ class SessionManager:
         session_id = await self._repo.create_session(title)
         return Session(session_id=session_id)
 
-    async def load_session(self, session_id: str) -> Optional[Session]:
+    async def load_session(self, session_id: str) -> Session:
         session_data = await self._repo.get_session(session_id)
         if not session_data:
-            return None
+            raise SessionNotFound("Session doesn't exist")
         messages = await self._repo.load_messages(session_id)
         session = Session(session_id=session_id)
         session.load_history(messages)
