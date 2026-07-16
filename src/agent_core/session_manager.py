@@ -27,6 +27,14 @@ class SessionManager:
         session = Session(session_id=session_id)
         session.load_history(messages)
         return session
+    
+    async def get_sessions_ids(self) -> list[str]:
+        return await self.get_sessions_ids()
+    
+    async def get_sessions(self) -> list[Session]:
+        sessions_ids = await self.get_sessions_ids()
+        sessions = [await self.load_session(id) for id in sessions_ids]
+        return sessions
 
     async def persist_turn(self, session: Session) -> None:
         if not session.session_id:

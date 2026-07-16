@@ -73,6 +73,14 @@ class SessionRepository:
             row = await cur.fetchone()
             return dict(row) if row else None
 
+    async def get_sessions_ids(self) -> list[str]:
+        async with await self.get_db() as db:
+            cur = await db.execute(
+                "SELECT id FROM sessions ORDER BY updated_at DESC"
+            )
+            rows = await cur.fetchall()
+            return [row["id"] for row in rows]
+
     async def update_session_timestamp(self, session_id: str) -> None:
         async with await self.get_db() as db:
             await db.execute(
