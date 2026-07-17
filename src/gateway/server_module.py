@@ -1,12 +1,10 @@
 import asyncio
-import traceback
 from typing import AsyncIterator, Awaitable
 
 from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
 from agent_core.session_manager import SessionManager, SessionNotFound
-from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
-from pydantic import ValidationError
-from utils import async_utils
+from fastapi import WebSocket
+from gateway.connection_manager import ConnectionManager
 from utils.async_utils import aenumerate
 from shared.config import config
 from shared.frames import (
@@ -30,7 +28,6 @@ from shared.frames import (
     StatusType,
     ThoughtMessageEvent,
     UserMessageEvent,
-    to_action,
 )
 from shared.messages import AssistantMessage
 
@@ -42,9 +39,8 @@ class Server:
     def __init__(self, session_manager: SessionManager) -> None:
         self.harness = Harness(session_manager)
         self.session_manager = session_manager
-        self.connections: set[WebSocket] = set()
-        self.events: dict[WebSocket, asyncio.Event] = {}
-        self.tasks: dict[WebSocket, asyncio.Task] = {}
+        self.connection_manager = ConnectionManager()
+        self.task: asyncio.Task = asyncio.create_task(self._listen_loop())
     
     @classmethod
     async def create(cls) -> "Server":
@@ -52,70 +48,22 @@ class Server:
         return cls(session_manager)
 
     async def connect(self, ws: WebSocket) -> Awaitable[None]:
-        self.connections.add(ws)
-        task = asyncio.create_task(self._listen_loop(ws=ws))
-        self.tasks[ws] = task
-        self.events[ws] = asyncio.Event()
-        return self.disconnected(ws=ws)
-    
-    async def disconnected(self, ws: WebSocket):
-        event = self.events.get(ws)
-        if event is None:
-            return
-        
-        await event.wait()
-        self.events.pop(ws)
-    
-    async def _handle_error(self, e: Exception, ws: WebSocket) -> bool:
-        print(f"Error: ({e.__class__.__name__})")
-        print(traceback.print_exc())
-        match e:
-            case ValidationError():
-                try:
-                    await ws.send_json(ErrorEvent(message=ErrorMessage.INVALID_FORMAT, details=e.errors()).to_dict())
-                except Exception:
-                    return True
-                return False
-            case WebSocketException() | WebSocketDisconnect():
-                return True
-            case asyncio.CancelledError():
-                return True
-            case Exception():
-                try:
-                    await ws.send_json(ErrorEvent(message=ErrorMessage.INTERNAL_ERROR).to_dict())
-                except Exception:
-                    return True
-                return False
-    
-    @async_utils.background_task
-    async def _handle(self, ws: WebSocket, action_json: str):
-        try:
-            action: Action = to_action(action_json)
+        return await self.connection_manager.connect(ws=ws)
 
-            async for event in self._dispatch(action=action):
-                await ws.send_json(event.to_dict())
-        except Exception as e:
-            await self._handle_error(e=e, ws=ws)
-            return
-
-    async def _listen_loop(self, ws: WebSocket):
+    async def _listen_loop(self):
         while True:
+            ws, action = await self.connection_manager.recv_action()
             try:
-                action: str = await ws.receive_text()
-                self._handle(ws=ws, action_json=action)
+                async for event in self._dispatch(action=action):
+                    await ws.send_json(event.to_dict())
             except Exception as e:
-                need_break = self._handle_error(e=e, ws=ws)
+                need_break = self.connection_manager.handle_error(e=e, ws=ws)
                 if need_break:
                     break
-        self.tasks.pop(ws)
-        self.connections.remove(ws)
         try:
             await ws.close()
         except Exception:
             pass
-        event = self.events.get(ws)
-        if event is not None:
-            event.set()
     
     async def _interrupt(self, action: InterruptAction):
         try:
