@@ -1,8 +1,8 @@
 from shared.messages import AssistantMessage, UserMessage
-from shared.session import Session
+from agent_core.session import Session
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Input, Label, Static
+from textual.widgets import Input, Label, Static, ListView, ListItem
 
 LOGO = r"""
                  .                      
@@ -66,6 +66,47 @@ class AgentMessageContainer(Container):
     def compose(self) -> ComposeResult:
         yield Label("AGENT", classes="agent-message-sender")
         yield Label(self.text, classes="agent-message-content")
+
+
+class SessionItem(ListItem):
+    def __init__(self, session_id: str, title: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self.session_id = session_id
+        self.title = title or session_id[:8] + "..."
+
+    def compose(self) -> ComposeResult:
+        yield Label(self.title, classes="session-item-title")
+
+
+class SessionList(Container):
+    def __init__(self, id="session-list", **kwargs):
+        super().__init__(id=id, **kwargs)
+        self.styles.display = "none"
+
+    def compose(self) -> ComposeResult:
+        yield Label("Sessions", classes="session-list-title")
+        yield ListView(id="session-list-view")
+        yield Label("\u2191\u2193 navigate \u2022 Enter select \u2022 Esc close", classes="session-list-hint")
+
+    def populate(self, sessions: list[str]) -> None:
+        list_view = self.query_one("#session-list-view", ListView)
+        list_view.clear()
+        for session_id in sessions:
+            list_view.append(SessionItem(session_id))
+
+    def get_selected_session_id(self) -> str | None:
+        list_view = self.query_one("#session-list-view", ListView)
+        if list_view.highlighted_child:
+            if hasattr(list_view.highlighted_child, "session_id"):
+                return getattr(list_view.highlighted_child, "session_id")
+        return None
+
+    def show_list(self) -> None:
+        self.styles.display = "block"
+        self.query_one("#session-list-view", ListView).focus()
+
+    def hide_list(self) -> None:
+        self.styles.display = "none"
 
 
 class MessageHistory(Container):

@@ -9,10 +9,16 @@ from websockets.asyncio.client import ClientConnection, connect
 from shared.frames import (
     Action,
     AssistantMessageEvent,
+    ChatHistoryAction,
+    ChatHistoryEvent,
     Event,
     InterruptAction,
     InterruptedEvent,
     SendMessageAction,
+    SessionCreateAction,
+    SessionCreateEvent,
+    SessionListAction,
+    SessionListEvent,
     StatusEvent,
     ResponseChunkEvent,
     ThoughtChunkEvent,
@@ -28,6 +34,7 @@ class Client:
         self.uri = "ws://127.0.0.1:8000/ws"
         self.reconnect_delay = 1
         self.connected: bool = False
+        self.current_session_id: Optional[str] = None
         
         self.websocket: Optional[ClientConnection] = None
         self._listen_task: Optional[asyncio.Task] = None
@@ -42,6 +49,9 @@ class Client:
             StatusEvent: self.handle_status,
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
+            SessionListEvent: self.handle_session_list,
+            SessionCreateEvent: self.handle_session_create,
+            ChatHistoryEvent: self.handle_chat_history,
         }
 
     async def connect(self):
@@ -105,10 +115,16 @@ class Client:
             raise ConnectionError("Unable to send the message, the client is not connected.")
 
     async def process_input(self, msg: str):
-        await self.send(SendMessageAction(text=msg))
+        if not self.current_session_id:
+            await self.create_session()
+            await asyncio.sleep(0.1)
+        else:
+            await self.send(SendMessageAction(text=msg, session_id=self.current_session_id))
     
     async def interrupt(self):
-        await self.send(InterruptAction())
+        if not self.current_session_id:
+            return
+        await self.send(InterruptAction(session_id=self.current_session_id))
 
     async def handle_connect(self) -> None: ...
     async def handle_disconnect(self) -> None: ...
@@ -120,6 +136,21 @@ class Client:
     async def handle_status(self, event: StatusEvent) -> None: ...
     async def handle_error(self, event: ErrorEvent) -> None: ...
     async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
+    async def handle_session_list(self, event: SessionListEvent) -> None: ...
+    async def handle_session_create(self, event: SessionCreateEvent) -> None: ...
+    async def handle_chat_history(self, event: ChatHistoryEvent) -> None: ...
+
+    async def list_sessions(self) -> None:
+        await self.send(SessionListAction())
+
+    async def create_session(self) -> None:
+        await self.send(SessionCreateAction())
+
+    async def load_chat_history(self, session_id: str) -> None:
+        await self.send(ChatHistoryAction(session_id=session_id))
+
+    def set_session(self, session_id: str) -> None:
+        self.current_session_id = session_id
 
     async def close(self):
         self._running_connection = False
