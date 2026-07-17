@@ -15,7 +15,7 @@ class SessionManager:
     async def create(cls, path: Path) -> "SessionManager":
         return cls(await SessionRepository.create(path=path))
 
-    async def new_session(self, title: str = "New Session") -> Session:
+    async def new_session(self, title: str = "Untitled Session") -> Session:
         session_id = await self._repo.create_session(title)
         return Session(session_id=session_id)
 
@@ -28,12 +28,12 @@ class SessionManager:
         session.load_history(messages)
         return session
     
-    async def get_sessions_ids(self) -> list[str]:
-        return await self.get_sessions_ids()
+    async def get_session_ids(self) -> list[str]:
+        return await self._repo.get_session_ids()
     
     async def get_sessions(self) -> list[Session]:
-        sessions_ids = await self.get_sessions_ids()
-        sessions = [await self.load_session(id) for id in sessions_ids]
+        session_ids = await self.get_session_ids()
+        sessions = [await self.load_session(id) for id in session_ids]
         return sessions
 
     async def persist_turn(self, session: Session) -> None:

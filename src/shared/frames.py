@@ -2,6 +2,7 @@ from enum import StrEnum
 import json
 from typing import Any, Literal, Optional, Union, Annotated
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
+from shared.messages import Message
 
 class StatusType(StrEnum):
     IDLE = "idle"
@@ -10,11 +11,17 @@ class StatusType(StrEnum):
 
 class ErrorMessage(StrEnum):
     INVALID_FORMAT = "Invalid format"
+    SESSION_NOT_FOUND = "Session doesn't exist"
     AGENT_RUNNING = "Agent already running"
     AGENT_NOT_RUNNING = "Agent is not running"
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
+    # SESSION_SUBSCRIBE = "sessions:subscribe"
+    # SESSION_UNSUBSCRIBE = "sessions:unsubscribe"
+    SESSION_LIST = "sessions:list"
+    SESSION_CREATE = "sessions:create"
+    # SESSION_DELETE = "sessions:delete"
     RESPONSE = "chat:streaming:response"
     THOUGHT = "chat:streaming:thought"
     USER_MESSAGE = "chat:message:user"
@@ -23,11 +30,17 @@ class EventType(StrEnum):
     STATUS = "chat:status"
     ERROR = "chat:error"
     INTERRUPTED = "chat:interrupted"
+    CHAT_HISTORY = "chat:history"
 
 class ActionType(StrEnum):
-    SESSION_SUBSCRIBE = "sessions:subscribe"
+    # SESSION_SUBSCRIBE = "sessions:subscribe"
+    # SESSION_UNSUBSCRIBE = "sessions:unsubscribe"
+    SESSION_LIST = "sessions:list"
+    SESSION_CREATE = "sessions:create"
+    # SESSION_DELETE = "sessions:delete"
     SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
+    CHAT_HISTORY = "chat:history"
 
 FrameType = EventType | ActionType
 
@@ -68,6 +81,30 @@ class Action(Frame, frozen=True):
 
 
 # SERVER
+# class SessionSubscribeEvent(Event, frozen=True):
+#     type: Literal[EventType.SESSION_SUBSCRIBE] = EventType.SESSION_SUBSCRIBE
+#     session_id: str
+
+# class SessionUnsubscribeEvent(Event, frozen=True):
+#     type: Literal[EventType.SESSION_UNSUBSCRIBE] = EventType.SESSION_UNSUBSCRIBE
+#     session_id: str
+
+class SessionListEvent(Event, frozen=True):
+    type: Literal[EventType.SESSION_LIST] = EventType.SESSION_LIST
+    sessions: list[str]
+
+class SessionCreateEvent(Event, frozen=True):
+    type: Literal[EventType.SESSION_CREATE] = EventType.SESSION_CREATE
+    session_id: str
+
+# class SessionDeleteEvent(Event, frozen=True):
+#     type: Literal[EventType.SESSION_DELETE] = EventType.SESSION_DELETE
+#     session_id: str
+
+class ChatHistoryEvent(Event, frozen=True):
+    type: Literal[EventType.CHAT_HISTORY] = EventType.CHAT_HISTORY
+    messages: list[Message]
+
 class InterruptedEvent(Event, frozen=True):
     type: Literal[EventType.INTERRUPTED] = EventType.INTERRUPTED
 
@@ -78,36 +115,65 @@ class ErrorEvent(Event, frozen=True):
 
 class StatusEvent(Event, frozen=True):
     type: Literal[EventType.STATUS] = EventType.STATUS
+    session_id: str
     state: StatusType
 
 class UserMessageEvent(Event, frozen=True):
     type: Literal[EventType.USER_MESSAGE] = EventType.USER_MESSAGE
+    session_id: str
     text: str
 
 class AssistantMessageEvent(Event, frozen=True):
     type: Literal[EventType.ASSISTANT_MESSAGE] = EventType.ASSISTANT_MESSAGE
+    session_id: str
     text: str
 
 class ThoughtMessageEvent(Event, frozen=True):
     type: Literal[EventType.THOUGHT_MESSAGE] = EventType.THOUGHT_MESSAGE
+    session_id: str
     text: str
 
 class ResponseChunkEvent(Event, frozen=True):
     type: Literal[EventType.RESPONSE] = EventType.RESPONSE
+    session_id: str
     chunk: str
 
 class ThoughtChunkEvent(Event, frozen=True):
     type: Literal[EventType.THOUGHT] = EventType.THOUGHT
+    session_id: str
     chunk: str
 
 
 # CLIENT
+# class SessionSubscribeAction(Action, frozen=True):
+#     type: Literal[ActionType.SESSION_SUBSCRIBE] = ActionType.SESSION_SUBSCRIBE
+#     session_id: str
+
+# class SessionUnsubscribeAction(Action, frozen=True):
+#     type: Literal[ActionType.SESSION_UNSUBSCRIBE] = ActionType.SESSION_UNSUBSCRIBE
+#     session_id: str
+
+class SessionListAction(Action, frozen=True):
+    type: Literal[ActionType.SESSION_LIST] = ActionType.SESSION_LIST
+
+class SessionCreateAction(Action, frozen=True):
+    type: Literal[ActionType.SESSION_CREATE] = ActionType.SESSION_CREATE
+
+# class SessionDeleteAction(Action, frozen=True):
+#     type: Literal[ActionType.SESSION_DELETE] = ActionType.SESSION_DELETE
+
 class SendMessageAction(Action, frozen=True):
     type: Literal[ActionType.SEND_MESSAGE] = ActionType.SEND_MESSAGE
+    session_id: str
     text: str
 
 class InterruptAction(Action, frozen=True):
     type: Literal[ActionType.INTERRUPT] = ActionType.INTERRUPT
+    session_id: str
+
+class ChatHistoryAction(Action, frozen=True):
+    type: Literal[ActionType.CHAT_HISTORY] = ActionType.CHAT_HISTORY
+    session_id: str
 
 
 EventUnion = Annotated[
@@ -119,7 +185,10 @@ EventUnion = Annotated[
         UserMessageEvent,
         AssistantMessageEvent,
         ThoughtMessageEvent,
-        InterruptedEvent
+        InterruptedEvent,
+        SessionListEvent,
+        SessionCreateEvent,
+        ChatHistoryEvent,
     ],
     Field(discriminator="type"),
 ]
@@ -128,6 +197,9 @@ ActionUnion = Annotated[
     Union[
         SendMessageAction,
         InterruptAction,
+        SessionListAction,
+        SessionCreateAction,
+        ChatHistoryAction
     ],
     Field(discriminator="type")
 ]

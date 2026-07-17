@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,7 @@ from shared.messages import Message, message_adapter
 
 
 async def _get_db(path: Path) -> Connection:
-    path.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     db = await aiosqlite.connect(path)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode = WAL;")
@@ -51,12 +52,17 @@ class SessionRepository:
         await init_db(db)
         return cls(path)
     
+    @asynccontextmanager
     async def get_db(self):
-        return await _get_db(self._path)
+        db = await _get_db(self._path)
+        try:
+            yield db
+        finally:
+            await db.close()
 
     async def create_session(self, title: str = "New Session") -> str:
         session_id = str(uuid4())
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             await db.execute(
                 "INSERT INTO sessions (id, title) VALUES (?, ?)",
                 (session_id, title),
@@ -65,7 +71,7 @@ class SessionRepository:
             return session_id
 
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             cur = await db.execute(
                 "SELECT id, title, created_at, updated_at FROM sessions WHERE id = ?",
                 (session_id,),
@@ -73,8 +79,8 @@ class SessionRepository:
             row = await cur.fetchone()
             return dict(row) if row else None
 
-    async def get_sessions_ids(self) -> list[str]:
-        async with await self.get_db() as db:
+    async def get_session_ids(self) -> list[str]:
+        async with self.get_db() as db:
             cur = await db.execute(
                 "SELECT id FROM sessions ORDER BY updated_at DESC"
             )
@@ -82,7 +88,7 @@ class SessionRepository:
             return [row["id"] for row in rows]
 
     async def update_session_timestamp(self, session_id: str) -> None:
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             await db.execute(
                 "UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (session_id,),
@@ -90,13 +96,13 @@ class SessionRepository:
             await db.commit()
 
     async def delete_session(self, session_id: str) -> None:
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             await db.commit()
 
 
     async def load_messages(self, session_id: str) -> list[Message]:
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             cur = await db.execute(
                 "SELECT data FROM messages WHERE session_id = ? ORDER BY id ASC",
                 (session_id,),
@@ -107,7 +113,7 @@ class SessionRepository:
     async def append_message(self, session_id: str, message: Message) -> int:
         data_json = message.model_dump_json(exclude_none=True)
 
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             cur = await db.execute(
                 "INSERT INTO messages (session_id, data) VALUES (?, ?)",
                 (session_id, data_json),
@@ -122,7 +128,7 @@ class SessionRepository:
             return []
             
         ids = []
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             await db.execute("BEGIN TRANSACTION;")
             
             try:
@@ -145,7 +151,7 @@ class SessionRepository:
             return ids
         
     async def rewind_user_messages(self, session_id: str, n: int = 1) -> int:
-        async with await self.get_db() as db:
+        async with self.get_db() as db:
             cur = await db.execute(
                 """
                 SELECT id FROM messages

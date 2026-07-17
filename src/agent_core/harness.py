@@ -3,8 +3,8 @@ from typing import AsyncIterator, Optional
 
 from agent_core.agent import Agent
 from agent_core.session import Session
-from shared.messages import AssistantMessage, UserMessage
-from shared.frames import Event, ResponseChunkEvent, ThoughtChunkEvent
+from agent_core.session_manager import SessionManager
+from shared.messages import AssistantMessage, Message, UserMessage
 
 class AgentAlreadyRunning(Exception):
     pass
@@ -16,55 +16,71 @@ class ExecutionInterrupted(Exception):
     pass
 
 class Harness:
-    def __init__(self):
-        self.session = Session()
-        self.agent = Agent(self.session)
-        self.lock = asyncio.Lock()
-        self._current_task: Optional[asyncio.Task] = None
+    def __init__(self, session_manager: SessionManager):
+        self.session_manager = session_manager
+        self.session_locks: dict[Session, asyncio.Lock] = {}
+        self._session_tasks: dict[Session, Optional[asyncio.Task]] = {}
     
-    async def interrupt(self):
-        if not self._current_task or self._current_task.done():
+    async def interrupt(self, session_id: str):
+        session = await self.session_manager.load_session(session_id)
+        task = self._session_tasks.get(session)
+        if task is None or task.done():
             raise AgentNotRunning("Agent is not running")
         
-        self._current_task.cancel()
+        task.cancel()
         try:
-            await self._current_task
+            await task
         except asyncio.CancelledError:
             pass
 
-    async def process_input(self, input: str) -> AsyncIterator[Event]:
+    async def process_input(self, input: str, session_id: str) -> AsyncIterator[Message]:
         if not input or not input.strip():
             return
+        
+        session = await self.session_manager.load_session(session_id)
+        agent = Agent(session)
+        lock = self.session_locks.get(session)
+        if lock is None:
+            lock = asyncio.Lock()
+            self.session_locks[session] = lock
 
-        if self.lock.locked():
+        if lock.locked():
             raise AgentAlreadyRunning("Agent is already running")
 
-        async with self.lock:
-            self._current_task = asyncio.current_task()
+        async with lock:
+            self._session_tasks[session] = asyncio.current_task()
 
             thinking_chunks: list[str] = []
             final_chunks: list[str] = []
 
-            self.session.add_message(UserMessage(content=input))
-            self.session.record()
+            session.add_message(UserMessage(content=input))
+            await self.session_manager.persist_turn(session)
             try:
-                async for event in await self.agent.run():
-                    if isinstance(event, ResponseChunkEvent):
-                        final_chunks.append(event.chunk)
-                    elif isinstance(event, ThoughtChunkEvent):
-                        thinking_chunks.append(event.chunk)
+                async for chunk in await agent.run():
+                    if isinstance(chunk, AssistantMessage):
+                        content = chunk.content
+                        thought = chunk.reasoning_content or chunk.reasoning
+                        if content:
+                            final_chunks.append(content)
+                        elif thought:
+                            thinking_chunks.append(thought)
                         
-                    yield event
-                
+                    yield chunk                
 
                 if thinking_chunks or final_chunks:
-                    self.session.add_message(AssistantMessage(
+                    session.add_message(AssistantMessage(
                         reasoning_content="".join(thinking_chunks) if thinking_chunks else None,
                         reasoning="".join(thinking_chunks) if thinking_chunks else None,
                         content="".join(final_chunks) if final_chunks else None
                     ))
             except asyncio.CancelledError:
-                self.session.revert()
+                session.revert()
                 raise ExecutionInterrupted("The execution was canceled")
+            except Exception:
+                session.revert()
+                raise
+            else:
+                await self.session_manager.persist_turn(session)
             finally:
-                self._current_task = None
+                self._session_tasks.pop(session)
+                self.session_locks.pop(session)
