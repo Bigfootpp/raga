@@ -6,6 +6,9 @@ from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
 from pydantic import ValidationError
 from shared.frames import Action, ErrorEvent, ErrorMessage, to_action
 
+# TODO: Support RPC method request with Transaction Class
+class Transaction:
+    pass
 
 class ConnectionManager:
     def __init__(self):
