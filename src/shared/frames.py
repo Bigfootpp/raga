@@ -2,7 +2,7 @@ from enum import StrEnum
 import json
 from typing import Any, Literal, Optional, Union, Annotated
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
-from shared.messages import Message
+from shared.messages import MessageUnion
 
 class StatusType(StrEnum):
     IDLE = "idle"
@@ -84,7 +84,7 @@ class SessionCreateEvent(Event, frozen=True):
 
 class ChatHistoryEvent(Event, frozen=True):
     type: Literal[EventType.CHAT_HISTORY] = EventType.CHAT_HISTORY
-    messages: list[Message]
+    messages: list[MessageUnion]
 
 class InterruptedEvent(Event, frozen=True):
     type: Literal[EventType.INTERRUPTED] = EventType.INTERRUPTED

@@ -6,7 +6,7 @@ import aiosqlite
 from aiosqlite import Connection
 from uuid import uuid4
 
-from shared.messages import Message, message_adapter
+from shared.messages import MessageUnion, message_adapter
 
 
 async def _get_db(path: Path) -> Connection:
@@ -101,7 +101,7 @@ class SessionRepository:
             await db.commit()
 
 
-    async def load_messages(self, session_id: str) -> list[Message]:
+    async def load_messages(self, session_id: str) -> list[MessageUnion]:
         async with self.get_db() as db:
             cur = await db.execute(
                 "SELECT data FROM messages WHERE session_id = ? ORDER BY id ASC",
@@ -110,7 +110,7 @@ class SessionRepository:
             rows = await cur.fetchall()
             return [message_adapter.validate_json(row["data"]) for row in rows]
 
-    async def append_message(self, session_id: str, message: Message) -> int:
+    async def append_message(self, session_id: str, message: MessageUnion) -> int:
         data_json = message.model_dump_json(exclude_none=True)
 
         async with self.get_db() as db:
@@ -123,7 +123,7 @@ class SessionRepository:
                 return cur.lastrowid
             raise DatabaseError("Failed to insert message into the database")
 
-    async def append_messages_batch(self, session_id: str, messages: list[Message]) -> list[int]:
+    async def append_messages_batch(self, session_id: str, messages: list[MessageUnion]) -> list[int]:
         if not messages:
             return []
             
