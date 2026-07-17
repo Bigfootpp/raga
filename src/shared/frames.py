@@ -17,11 +17,8 @@ class ErrorMessage(StrEnum):
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
-    # SESSION_SUBSCRIBE = "sessions:subscribe"
-    # SESSION_UNSUBSCRIBE = "sessions:unsubscribe"
     SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
-    # SESSION_DELETE = "sessions:delete"
     RESPONSE = "chat:streaming:response"
     THOUGHT = "chat:streaming:thought"
     USER_MESSAGE = "chat:message:user"
@@ -33,11 +30,8 @@ class EventType(StrEnum):
     CHAT_HISTORY = "chat:history"
 
 class ActionType(StrEnum):
-    # SESSION_SUBSCRIBE = "sessions:subscribe"
-    # SESSION_UNSUBSCRIBE = "sessions:unsubscribe"
     SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
-    # SESSION_DELETE = "sessions:delete"
     SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
     CHAT_HISTORY = "chat:history"
@@ -79,16 +73,7 @@ class Event(Frame, frozen=True):
 class Action(Frame, frozen=True):
     type: ActionType
 
-
 # SERVER
-# class SessionSubscribeEvent(Event, frozen=True):
-#     type: Literal[EventType.SESSION_SUBSCRIBE] = EventType.SESSION_SUBSCRIBE
-#     session_id: str
-
-# class SessionUnsubscribeEvent(Event, frozen=True):
-#     type: Literal[EventType.SESSION_UNSUBSCRIBE] = EventType.SESSION_UNSUBSCRIBE
-#     session_id: str
-
 class SessionListEvent(Event, frozen=True):
     type: Literal[EventType.SESSION_LIST] = EventType.SESSION_LIST
     sessions: list[str]
@@ -96,10 +81,6 @@ class SessionListEvent(Event, frozen=True):
 class SessionCreateEvent(Event, frozen=True):
     type: Literal[EventType.SESSION_CREATE] = EventType.SESSION_CREATE
     session_id: str
-
-# class SessionDeleteEvent(Event, frozen=True):
-#     type: Literal[EventType.SESSION_DELETE] = EventType.SESSION_DELETE
-#     session_id: str
 
 class ChatHistoryEvent(Event, frozen=True):
     type: Literal[EventType.CHAT_HISTORY] = EventType.CHAT_HISTORY
@@ -143,24 +124,11 @@ class ThoughtChunkEvent(Event, frozen=True):
     session_id: str
     chunk: str
 
-
-# CLIENT
-# class SessionSubscribeAction(Action, frozen=True):
-#     type: Literal[ActionType.SESSION_SUBSCRIBE] = ActionType.SESSION_SUBSCRIBE
-#     session_id: str
-
-# class SessionUnsubscribeAction(Action, frozen=True):
-#     type: Literal[ActionType.SESSION_UNSUBSCRIBE] = ActionType.SESSION_UNSUBSCRIBE
-#     session_id: str
-
 class SessionListAction(Action, frozen=True):
     type: Literal[ActionType.SESSION_LIST] = ActionType.SESSION_LIST
 
 class SessionCreateAction(Action, frozen=True):
     type: Literal[ActionType.SESSION_CREATE] = ActionType.SESSION_CREATE
-
-# class SessionDeleteAction(Action, frozen=True):
-#     type: Literal[ActionType.SESSION_DELETE] = ActionType.SESSION_DELETE
 
 class SendMessageAction(Action, frozen=True):
     type: Literal[ActionType.SEND_MESSAGE] = ActionType.SEND_MESSAGE

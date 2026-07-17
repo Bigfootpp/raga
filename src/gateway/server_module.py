@@ -22,11 +22,8 @@ from shared.frames import (
     SendMessageAction,
     SessionCreateAction,
     SessionCreateEvent,
-    # SessionDeleteAction,
     SessionListAction,
     SessionListEvent,
-    # SessionSubscribeAction,
-    # SessionUnsubscribeAction,
     StatusEvent,
     ResponseChunkEvent,
     ThoughtChunkEvent,
@@ -199,16 +196,10 @@ class Server:
 
     async def _dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
-            # case SessionSubscribeAction():
-            #     pass
-            # case SessionUnsubscribeAction():
-            #     pass
             case SessionListAction():
                 yield await self._session_list()
             case SessionCreateAction():
                 yield await self._session_create()
-            # case SessionDeleteAction():
-            #     pass
             case SendMessageAction():
                 async for event in self._send_message(action):
                     yield event

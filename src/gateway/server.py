@@ -22,5 +22,4 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
     disconnect_event = await connection_manager.connect(websocket)
-    # On attend l'événement de déconnexion
     await disconnect_event

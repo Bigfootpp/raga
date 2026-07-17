@@ -1,4 +1,3 @@
-# TODO: Add session list box
 Screen {
     background: #000000;
     color: #ffffff;
