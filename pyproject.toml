@@ -7,7 +7,7 @@ name = "raga"
 version = "0.1.0"
 description = "RAGA - Adaptive Agent"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "textual==8.2.7",
     "textual-dev==1.8.0",
