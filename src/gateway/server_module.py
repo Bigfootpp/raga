@@ -1,10 +1,11 @@
 import asyncio
-from typing import AsyncIterator, Awaitable
+from typing import AsyncGenerator, AsyncIterator, Awaitable
 
 from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
 from agent_core.session_manager import SessionManager, SessionNotFound
 from fastapi import WebSocket
 from gateway.connection_manager import ConnectionManager
+from shared.frames_rpc import SessionListReq, SessionListRes
 from utils.async_utils import aenumerate
 from shared.config import config
 from shared.frames import (
@@ -20,8 +21,6 @@ from shared.frames import (
     SendMessageAction,
     SessionCreateAction,
     SessionCreateEvent,
-    SessionListAction,
-    SessionListEvent,
     StatusEvent,
     ResponseChunkEvent,
     ThoughtChunkEvent,
@@ -37,16 +36,23 @@ def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=St
 
 class Server:
     def __init__(self, session_manager: SessionManager) -> None:
+        connection_manager = ConnectionManager()
+        connection_manager.on(SessionListReq, self._session_list_request)
+
         self.harness = Harness(session_manager)
         self.session_manager = session_manager
-        self.connection_manager = ConnectionManager()
+        self.connection_manager = connection_manager
         self.task: asyncio.Task = asyncio.create_task(self._listen_loop())
     
     @classmethod
     async def create(cls) -> "Server":
         session_manager = await SessionManager.create(config.DB_PATH)
         return cls(session_manager)
-
+    
+    async def _session_list_request(self, request: SessionListReq) -> AsyncGenerator[SessionListRes, None]:
+        sessions = await self.session_manager.get_session_ids()
+        yield SessionListRes(sessions=sessions, id=request.id)
+    
     async def connect(self, ws: WebSocket) -> Awaitable[None]:
         return await self.connection_manager.connect(ws=ws)
 
@@ -124,10 +130,6 @@ class Server:
         yield AssistantMessageEvent(text="".join(final_chunks), session_id=action.session_id)
         yield idle_status(action.session_id)
     
-    async def _session_list(self):
-        sessions = await self.session_manager.get_session_ids()
-        return SessionListEvent(sessions=sessions)
-    
     async def _session_create(self):
         session = await self.session_manager.new_session()
         if session.session_id:
@@ -144,8 +146,6 @@ class Server:
 
     async def _dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
-            case SessionListAction():
-                yield await self._session_list()
             case SessionCreateAction():
                 yield await self._session_create()
             case SendMessageAction():
