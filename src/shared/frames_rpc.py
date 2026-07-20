@@ -1,7 +1,13 @@
 from enum import StrEnum
 import json
-from typing import Any, Literal, Union, Annotated
+from typing import Any, Literal, Union, Annotated, cast
+from uuid import uuid4
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
+
+class FrameType(StrEnum):
+    REQUEST = "request"
+    RESPONSE = "response"
+    EVENT = "event"
 
 class StatusType(StrEnum):
     IDLE = "idle"
@@ -31,10 +37,13 @@ class ClientEventType(StrEnum):
 MethodType = ServerMethodType | ClientMethodType
 EventType = ServerEventType | ClientEventType
 
-class Request(BaseModel, frozen=True):
-    type: Literal["request"] = "request"
-    id: str
+type bool_type = Literal[True] | Literal[False]
+
+class Request[StreamType: bool_type](BaseModel, frozen=True):
+    type: Literal[FrameType.REQUEST] = FrameType.REQUEST
+    id: str = Field(default_factory=lambda: str(uuid4()))
     method: MethodType
+    stream: StreamType = cast(StreamType, False)
 
     @model_validator(mode="before")
     @classmethod
@@ -50,10 +59,12 @@ class Request(BaseModel, frozen=True):
         msg_type = flat_dict.pop("type")
         req_id = flat_dict.pop("id")
         method = flat_dict.pop("method")
+        stream = flat_dict.pop("stream")
         return {
             "type": msg_type,
             "id": req_id,
             "method": method,
+            "stream": stream,
             "param": flat_dict
         }
 
@@ -64,7 +75,7 @@ class Request(BaseModel, frozen=True):
         return self.model_dump_json()
 
 class Response(BaseModel, frozen=True):
-    type: Literal["response"] = "response"
+    type: Literal[FrameType.RESPONSE] = FrameType.RESPONSE
     id: str
     ok: bool = True
     method: MethodType
@@ -102,7 +113,7 @@ class Response(BaseModel, frozen=True):
         return self.model_dump_json()
 
 class Event(BaseModel, frozen=True):
-    type: Literal["event"] = "event"
+    type: Literal[FrameType.EVENT] = FrameType.EVENT
     event: EventType
 
     @model_validator(mode="before")
@@ -132,7 +143,7 @@ class Event(BaseModel, frozen=True):
 
 # Server
 
-class SessionListReq(Request, frozen=True):
+class SessionListReq[StreamType: bool_type](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
 
 class SessionListRes(Response, frozen=True):
@@ -140,13 +151,14 @@ class SessionListRes(Response, frozen=True):
     sessions: list[str]
 
 # Client
-
-RequestUnion = Annotated[
-    Union[
-        SessionListReq,
-    ],
-    Field(discriminator="method")
-]
+type RequestUnion[StreamType: bool_type] = SessionListReq[StreamType]
+# type RequestUnion[StreamType: bool_type] = Annotated[
+#     Union[
+#         SessionListReq[StreamType],
+#         ...
+#     ],
+#     Field(discriminator="method")
+# ]
 
 ResponseUnion = Annotated[
     Union[
@@ -155,10 +167,10 @@ ResponseUnion = Annotated[
     Field(discriminator="method")
 ]
 
-request_adapter = TypeAdapter(RequestUnion)
+request_adapter = TypeAdapter(RequestUnion[bool_type])
 response_adapter = TypeAdapter(ResponseUnion)
 
-def to_request(req_json: Union[str, dict[str, Any]]) -> RequestUnion:
+def to_request(req_json: Union[str, dict[str, Any]]) -> RequestUnion[bool_type]:
     if isinstance(req_json, str):
         req_json = json.loads(req_json)
     return request_adapter.validate_python(req_json)
