@@ -21,7 +21,6 @@ from shared.frames import (
     ThoughtChunkEvent,
     ThoughtMessageEvent,
     UserMessageEvent,
-    SessionListEvent,
     SessionCreateEvent,
     ChatHistoryEvent,
 )
@@ -115,7 +114,6 @@ class TUI(Client, App):
     async def on_mount(self):
         self.set_status("connecting")
         await self.connect()
-        # await self.list_sessions()
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="main-scroll"):
@@ -170,7 +168,7 @@ class TUI(Client, App):
             if history_widget:
                 history_widget.focus()
         else:
-            await self.list_sessions()
+            await self.update_session_list()
             session_list.show_list()
             self._session_list_visible = True
 
@@ -289,23 +287,23 @@ class TUI(Client, App):
         self.update_history(self.session)
         self.reset_streaming_state()
         self.set_status("interrupted", lock_duration=2)
-    
-    async def handle_session_list(self, event: SessionListEvent) -> None:
-        session_list = self._get_session_list_widget()
-        if session_list:
-            session_list.populate(event.sessions)
 
     async def handle_session_create(self, event: SessionCreateEvent) -> None:
         if event.session_id:
             self.current_session_id = event.session_id
             self.session = Session(session_id=event.session_id)
             self.show_feedback(f"Session created: {event.session_id[:8]}", duration=2)
-            await self.list_sessions()
 
     async def handle_chat_history(self, event: ChatHistoryEvent) -> None:
         self.session.load_history(event.messages)
         self.session.record()
         self.update_history(self.session)
+    
+    async def update_session_list(self):
+        sessions = await self.list_sessions()
+        session_list = self._get_session_list_widget()
+        if session_list:
+            session_list.populate(sessions)
 
     def update_history(self, history_list: Session) -> None:
         session = self._get_message_history_widget()

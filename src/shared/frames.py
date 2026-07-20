@@ -17,7 +17,6 @@ class ErrorMessage(StrEnum):
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
-    SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
     RESPONSE = "chat:streaming:response"
     THOUGHT = "chat:streaming:thought"
@@ -30,7 +29,6 @@ class EventType(StrEnum):
     CHAT_HISTORY = "chat:history"
 
 class ActionType(StrEnum):
-    SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
     SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
@@ -74,10 +72,6 @@ class Action(Frame, frozen=True):
     type: ActionType
 
 # SERVER
-class SessionListEvent(Event, frozen=True):
-    type: Literal[EventType.SESSION_LIST] = EventType.SESSION_LIST
-    sessions: list[str]
-
 class SessionCreateEvent(Event, frozen=True):
     type: Literal[EventType.SESSION_CREATE] = EventType.SESSION_CREATE
     session_id: str
@@ -124,9 +118,6 @@ class ThoughtChunkEvent(Event, frozen=True):
     session_id: str
     chunk: str
 
-class SessionListAction(Action, frozen=True):
-    type: Literal[ActionType.SESSION_LIST] = ActionType.SESSION_LIST
-
 class SessionCreateAction(Action, frozen=True):
     type: Literal[ActionType.SESSION_CREATE] = ActionType.SESSION_CREATE
 
@@ -154,7 +145,6 @@ EventUnion = Annotated[
         AssistantMessageEvent,
         ThoughtMessageEvent,
         InterruptedEvent,
-        SessionListEvent,
         SessionCreateEvent,
         ChatHistoryEvent,
     ],
@@ -165,7 +155,6 @@ ActionUnion = Annotated[
     Union[
         SendMessageAction,
         InterruptAction,
-        SessionListAction,
         SessionCreateAction,
         ChatHistoryAction
     ],

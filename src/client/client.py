@@ -1,8 +1,9 @@
 import asyncio
 import json
-from typing import Optional, Any, Type
+from typing import AsyncGenerator, Literal, Optional, Any, Type, Union, overload
 from collections.abc import Callable, Awaitable
 
+from shared.frames_rpc import FrameType, RequestUnion, ResponseUnion, ServerMethodType, SessionListReq, SessionListRes, to_response
 import websockets
 from websockets.asyncio.client import ClientConnection, connect
 
@@ -17,8 +18,6 @@ from shared.frames import (
     SendMessageAction,
     SessionCreateAction,
     SessionCreateEvent,
-    SessionListAction,
-    SessionListEvent,
     StatusEvent,
     ResponseChunkEvent,
     ThoughtChunkEvent,
@@ -27,6 +26,9 @@ from shared.frames import (
     UserMessageEvent,
     to_event
 )
+
+class BadServerResponseError(Exception):
+    pass
 
 class Client:
     def __init__(self, *args, **kwargs):
@@ -37,6 +39,7 @@ class Client:
         self.current_session_id: Optional[str] = None
         
         self.websocket: Optional[ClientConnection] = None
+        self.transactions: dict[str, asyncio.Queue[ResponseUnion]] = {}
         self._listen_task: Optional[asyncio.Task] = None
         self._running_connection: bool = False
         self._background_tasks = set()
@@ -49,7 +52,6 @@ class Client:
             StatusEvent: self.handle_status,
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
-            SessionListEvent: self.handle_session_list,
             SessionCreateEvent: self.handle_session_create,
             ChatHistoryEvent: self.handle_chat_history,
         }
@@ -95,10 +97,17 @@ class Client:
             
         async for message in self.websocket:
             try:
-                event_json: dict = json.loads(message)
-                event = to_event(event_json)
-                if event:
-                    await self._dispatch(event)
+                frame_json: dict = json.loads(message)
+                if frame_json.get("type", "") == FrameType.RESPONSE:
+                    response = to_response(frame_json)
+                    res_id = response.id
+                    queue = self.transactions.get(res_id)
+                    if queue:
+                        await queue.put(response)
+                else:
+                    event = to_event(frame_json)
+                    if event:
+                        await self._dispatch(event)
             except Exception:
                 pass
 
@@ -125,6 +134,46 @@ class Client:
         if not self.current_session_id:
             return
         await self.send(InterruptAction(session_id=self.current_session_id))
+    
+    
+    @overload
+    async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
+    @overload
+    async def send_request(self, request: RequestUnion[Literal[True]]) -> AsyncGenerator[ResponseUnion, None]: ...
+    
+    async def send_request(self, request: RequestUnion[Any]) -> Union[AsyncGenerator[ResponseUnion, None], ResponseUnion]:
+        if not self.websocket or not self.websocket.state == websockets.State.OPEN:
+            raise ConnectionError("Unable to send the message, the client is not connected.")
+        
+        req_id = request.id
+        queue: asyncio.Queue[ResponseUnion] = asyncio.Queue()
+        self.transactions[req_id] = queue
+
+        try:
+            req_json = json.dumps(request.to_dict())
+            await self.websocket.send(req_json)
+        except Exception:
+            self.transactions.pop(req_id, None)
+            raise
+
+        if request.stream:
+            async def generator() -> AsyncGenerator[ResponseUnion, None]:
+                try:
+                    while True:
+                        response = await queue.get()
+                        yield response
+                        if not response.has_more:
+                            break
+                finally:
+                    self.transactions.pop(req_id, None)
+            
+            return generator()
+        else:
+            try:
+                return await queue.get()
+            finally:
+                self.transactions.pop(req_id, None)
+
 
     async def handle_connect(self) -> None: ...
     async def handle_disconnect(self) -> None: ...
@@ -136,12 +185,16 @@ class Client:
     async def handle_status(self, event: StatusEvent) -> None: ...
     async def handle_error(self, event: ErrorEvent) -> None: ...
     async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
-    async def handle_session_list(self, event: SessionListEvent) -> None: ...
     async def handle_session_create(self, event: SessionCreateEvent) -> None: ...
     async def handle_chat_history(self, event: ChatHistoryEvent) -> None: ...
 
-    async def list_sessions(self) -> None:
-        await self.send(SessionListAction())
+    async def list_sessions(self) -> list[str]:
+        response: SessionListRes = await self.send_request(SessionListReq())
+        if response.method != ServerMethodType.SESSION_LIST:
+            raise BadServerResponseError(
+                f"Wrong response method received; got {response.method}, excepted {ServerMethodType.SESSION_LIST}"
+            )
+        return response.sessions
 
     async def create_session(self) -> None:
         await self.send(SessionCreateAction())
