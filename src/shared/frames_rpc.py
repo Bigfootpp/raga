@@ -1,6 +1,6 @@
 from enum import StrEnum
 import json
-from typing import Any, Literal, Union, Annotated, cast
+from typing import Any, Literal, Optional, Union, Annotated, cast
 from uuid import uuid4
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
 
@@ -55,7 +55,7 @@ class Request[StreamType: bool_type](BaseModel, frozen=True):
 
     @model_serializer(mode="wrap")
     def serialize_nested(self, handler) -> dict[str, Any]:
-        flat_dict = handler(self)
+        flat_dict: dict = handler(self)
         msg_type = flat_dict.pop("type")
         req_id = flat_dict.pop("id")
         method = flat_dict.pop("method")
@@ -80,6 +80,7 @@ class Response(BaseModel, frozen=True):
     ok: bool = True
     method: MethodType
     has_more: bool = False
+    error_message: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -91,11 +92,12 @@ class Response(BaseModel, frozen=True):
 
     @model_serializer(mode="wrap")
     def serialize_nested(self, handler) -> dict[str, Any]:
-        flat_dict = handler(self)
+        flat_dict: dict = handler(self)
         msg_type = flat_dict.pop("type")
         req_id = flat_dict.pop("id")
         method = flat_dict.pop("method")
         ok = flat_dict.pop("ok")
+        error_message = flat_dict.pop("error_message", None)
         has_more = flat_dict.pop("has_more")
         return {
             "type": msg_type,
@@ -103,7 +105,8 @@ class Response(BaseModel, frozen=True):
             "ok": ok,
             "method": method,
             "has_more": has_more,
-            "payload": flat_dict
+            "payload": flat_dict,
+            "error_message" : error_message
         }
 
     def to_dict(self) -> dict[str, Any]:
