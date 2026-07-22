@@ -35,8 +35,8 @@ def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=St
 class Server:
     def __init__(self, session_manager: SessionManager) -> None:
         connection_manager = ConnectionManager()
-        connection_manager.on(SessionListReq, self._session_list_request)
-        connection_manager.on(ChatHistoryReq, self._chat_history_request)
+        connection_manager.on(SessionListReq, self._session_list)
+        connection_manager.on(ChatHistoryReq, self._chat_history)
 
         self.harness = Harness(session_manager)
         self.session_manager = session_manager
@@ -48,11 +48,11 @@ class Server:
         session_manager = await SessionManager.create(config.DB_PATH)
         return cls(session_manager)
     
-    async def _session_list_request(self, request: SessionListReq) -> AsyncGenerator[ResponseType[SessionListRes], None]:
+    async def _session_list(self, request: SessionListReq) -> AsyncGenerator[ResponseType[SessionListRes], None]:
         sessions = await self.session_manager.get_session_ids()
         yield SessionListRes(sessions=sessions, id=request.id)
     
-    async def _chat_history_request(self, request: ChatHistoryReq) -> AsyncGenerator[ResponseType[ChatHistoryRes], None]:
+    async def _chat_history(self, request: ChatHistoryReq) -> AsyncGenerator[ResponseType[ChatHistoryRes], None]:
         try:
             session = await self.session_manager.load_session(request.session_id)
             yield ChatHistoryRes(id=request.id, messages=session.history)
