@@ -81,6 +81,29 @@ class TUI(Client, App):
         except NoMatches:
             return None
 
+    def _focus_history_widget(self) -> None:
+        history_widget = self._get_message_history_widget()
+        if history_widget:
+            history_widget.focus()
+
+    def hide_session_list(self) -> None:
+        session_list = self._get_session_list_widget()
+        if session_list is None:
+            return
+
+        session_list.hide_list()
+        self._session_list_visible = False
+        self._focus_history_widget()
+
+    async def show_session_list(self) -> None:
+        await self.update_session_list()
+        session_list = self._get_session_list_widget()
+        if session_list is None:
+            return
+
+        session_list.show_list()
+        self._session_list_visible = True
+
     @async_utils.background_task
     async def show_feedback(self, message: str, *, duration: float = 1) -> None:
         banner = self._get_feedback_banner()
@@ -157,30 +180,14 @@ class TUI(Client, App):
                 await self.action_interrupt_or_close_session_list()
 
     async def action_toggle_session_list(self) -> None:
-        session_list = self._get_session_list_widget()
-        if not session_list:
-            return
-
         if self._session_list_visible:
-            session_list.hide_list()
-            self._session_list_visible = False
-            history_widget = self._get_message_history_widget()
-            if history_widget:
-                history_widget.focus()
+            self.hide_session_list()
         else:
-            await self.update_session_list()
-            session_list.show_list()
-            self._session_list_visible = True
+            await self.show_session_list()
 
     async def action_interrupt_or_close_session_list(self) -> None:
         if self._session_list_visible:
-            session_list = self._get_session_list_widget()
-            if session_list:
-                session_list.hide_list()
-                self._session_list_visible = False
-                history_widget = self._get_message_history_widget()
-                if history_widget:
-                    history_widget.focus()
+            self.hide_session_list()
         else:
             await self.interrupt()
     
@@ -196,18 +203,18 @@ class TUI(Client, App):
             session_id: str = getattr(item, 'session_id')
             if session_id:
                 await self.select_session(session_id)
-    
-    async def select_session(self, session_id: str) -> None:
+
+    async def load_session(self, session_id: str) -> None:
         self.set_session(session_id)
         self.session = Session(session_id=session_id)
-        await self.load_chat_history(session_id)
-        session_list = self._get_session_list_widget()
-        if session_list:
-            session_list.hide_list()
-            self._session_list_visible = False
-            history_widget = self._get_message_history_widget()
-            if history_widget:
-                history_widget.focus()
+        history = await self.load_chat_history(session_id)
+        self.session.load_history(history)
+        self.session.record()
+        self.update_history(self.session)
+
+    async def select_session(self, session_id: str) -> None:
+        await self.load_session(session_id)
+        self.hide_session_list()
     
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
