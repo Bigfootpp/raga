@@ -2,7 +2,6 @@ from enum import StrEnum
 import json
 from typing import Any, Literal, Optional, Union, Annotated
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
-from shared.messages import MessageUnion
 
 class StatusType(StrEnum):
     IDLE = "idle"
@@ -26,13 +25,11 @@ class EventType(StrEnum):
     STATUS = "chat:status"
     ERROR = "chat:error"
     INTERRUPTED = "chat:interrupted"
-    CHAT_HISTORY = "chat:history"
 
 class ActionType(StrEnum):
     SESSION_CREATE = "sessions:create"
     SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
-    CHAT_HISTORY = "chat:history"
 
 FrameType = EventType | ActionType
 
@@ -75,10 +72,6 @@ class Action(Frame, frozen=True):
 class SessionCreateEvent(Event, frozen=True):
     type: Literal[EventType.SESSION_CREATE] = EventType.SESSION_CREATE
     session_id: str
-
-class ChatHistoryEvent(Event, frozen=True):
-    type: Literal[EventType.CHAT_HISTORY] = EventType.CHAT_HISTORY
-    messages: list[MessageUnion]
 
 class InterruptedEvent(Event, frozen=True):
     type: Literal[EventType.INTERRUPTED] = EventType.INTERRUPTED
@@ -130,10 +123,6 @@ class InterruptAction(Action, frozen=True):
     type: Literal[ActionType.INTERRUPT] = ActionType.INTERRUPT
     session_id: str
 
-class ChatHistoryAction(Action, frozen=True):
-    type: Literal[ActionType.CHAT_HISTORY] = ActionType.CHAT_HISTORY
-    session_id: str
-
 
 EventUnion = Annotated[
     Union[
@@ -146,7 +135,6 @@ EventUnion = Annotated[
         ThoughtMessageEvent,
         InterruptedEvent,
         SessionCreateEvent,
-        ChatHistoryEvent,
     ],
     Field(discriminator="type"),
 ]
@@ -156,7 +144,6 @@ ActionUnion = Annotated[
         SendMessageAction,
         InterruptAction,
         SessionCreateAction,
-        ChatHistoryAction
     ],
     Field(discriminator="type")
 ]
