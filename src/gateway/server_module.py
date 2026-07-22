@@ -11,8 +11,6 @@ from shared.config import config
 from shared.frames import (
     Action,
     AssistantMessageEvent,
-    ChatHistoryAction,
-    ChatHistoryEvent,
     ErrorEvent,
     ErrorMessage,
     Event,
@@ -144,13 +142,6 @@ class Server:
             return SessionCreateEvent(session_id=session.session_id)
         else:
             return ErrorEvent(message=ErrorMessage.INTERNAL_ERROR)
-    
-    async def _chat_history(self, action: ChatHistoryAction):
-        try:
-            session = await self.session_manager.load_session(action.session_id)
-            return ChatHistoryEvent(messages=session.history)
-        except SessionNotFound:
-            return ErrorEvent(message=ErrorMessage.SESSION_NOT_FOUND)
 
     async def _dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
@@ -162,5 +153,3 @@ class Server:
             case InterruptAction():
                 async for event in self._interrupt(action):
                     yield event
-            case ChatHistoryAction():
-                yield await self._chat_history(action)
