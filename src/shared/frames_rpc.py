@@ -3,6 +3,14 @@ import json
 from typing import Any, Literal, Optional, Union, Annotated, cast
 from uuid import uuid4
 from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
+from shared.messages import MessageUnion
+
+class ErrorMessageRPC(StrEnum):
+    INVALID_FORMAT = "Invalid format"
+    SESSION_NOT_FOUND = "Session doesn't exist"
+    AGENT_RUNNING = "Agent already running"
+    AGENT_NOT_RUNNING = "Agent is not running"
+    INTERNAL_ERROR = "An internal error occurred during processing."
 
 class FrameType(StrEnum):
     REQUEST = "request"
@@ -20,7 +28,8 @@ class ServerMethodType(StrEnum):
     # SESSION_CREATE = "sessions:create"
     # SEND_MESSAGE = "chat:send"
     # INTERRUPT = "chat:interrupt"
-    # CHAT_HISTORY = "chat:history"
+    CHAT_HISTORY = "chat:history"
+    ERROR = "error"
 
 # Client -> Server
 class ServerEventType(StrEnum):
@@ -77,10 +86,9 @@ class Request[StreamType: bool_type](BaseModel, frozen=True):
 class Response(BaseModel, frozen=True):
     type: Literal[FrameType.RESPONSE] = FrameType.RESPONSE
     id: str
-    ok: bool = True
+    ok: Literal[True] = True
     method: MethodType
     has_more: bool = False
-    error_message: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -97,7 +105,6 @@ class Response(BaseModel, frozen=True):
         req_id = flat_dict.pop("id")
         method = flat_dict.pop("method")
         ok = flat_dict.pop("ok")
-        error_message = flat_dict.pop("error_message", None)
         has_more = flat_dict.pop("has_more")
         return {
             "type": msg_type,
@@ -106,7 +113,6 @@ class Response(BaseModel, frozen=True):
             "method": method,
             "has_more": has_more,
             "payload": flat_dict,
-            "error_message" : error_message
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -145,6 +151,10 @@ class Event(BaseModel, frozen=True):
         return self.model_dump_json()
 
 # Server
+class ErrorRes(Response, frozen=True):
+    method: Literal[ServerMethodType.ERROR] = ServerMethodType.ERROR
+    message: ErrorMessageRPC
+    details: Optional[Union[list, dict, str]] = None
 
 class SessionListReq[StreamType: bool_type](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
@@ -153,19 +163,30 @@ class SessionListRes(Response, frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
     sessions: list[str]
 
+class ChatHistoryReq[StreamType: bool_type](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
+    session_id: str
+
+class ChatHistoryRes(Response, frozen=True):
+    method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
+    messages: list[MessageUnion]
+
 # Client
-type RequestUnion[StreamType: bool_type] = SessionListReq[StreamType]
-# type RequestUnion[StreamType: bool_type] = Annotated[
-#     Union[
-#         SessionListReq[StreamType],
-#         ...
-#     ],
-#     Field(discriminator="method")
-# ]
+type ResponseType[ResType: Response] = Union[ResType, ErrorRes]
+
+type RequestUnion[StreamType: bool_type] = Annotated[
+    Union[
+        SessionListReq[StreamType],
+        ChatHistoryReq[StreamType],
+    ],
+    Field(discriminator="method")
+]
 
 ResponseUnion = Annotated[
     Union[
         SessionListRes,
+        ChatHistoryRes,
+        ErrorRes
     ],
     Field(discriminator="method")
 ]
