@@ -22,7 +22,6 @@ from websockets.asyncio.client import ClientConnection, connect
 from shared.frames import (
     Action,
     AssistantMessageEvent,
-    ChatHistoryEvent,
     Event,
     InterruptAction,
     InterruptedEvent,
@@ -83,7 +82,6 @@ class Client:
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
             SessionCreateEvent: self.handle_session_create,
-            ChatHistoryEvent: self.handle_chat_history,
         }
 
     async def connect(self):
@@ -218,7 +216,6 @@ class Client:
     async def handle_error(self, event: ErrorEvent) -> None: ...
     async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
     async def handle_session_create(self, event: SessionCreateEvent) -> None: ...
-    async def handle_chat_history(self, event: ChatHistoryEvent) -> None: ...
 
     async def list_sessions(self) -> list[str]:
         response = await self.send_request(SessionListReq())

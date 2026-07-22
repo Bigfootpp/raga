@@ -22,7 +22,6 @@ from shared.frames import (
     ThoughtMessageEvent,
     UserMessageEvent,
     SessionCreateEvent,
-    ChatHistoryEvent,
 )
 from utils import async_utils
 
@@ -300,11 +299,6 @@ class TUI(Client, App):
             self.current_session_id = event.session_id
             self.session = Session(session_id=event.session_id)
             self.show_feedback(f"Session created: {event.session_id[:8]}", duration=2)
-
-    async def handle_chat_history(self, event: ChatHistoryEvent) -> None:
-        self.session.load_history(event.messages)
-        self.session.record()
-        self.update_history(self.session)
     
     async def update_session_list(self):
         sessions = await self.list_sessions()
