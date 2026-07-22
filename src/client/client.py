@@ -3,14 +3,25 @@ import json
 from typing import AsyncGenerator, Literal, Optional, Any, Type, Union, overload
 from collections.abc import Callable, Awaitable
 
-from shared.frames_rpc import FrameType, RequestUnion, ResponseUnion, ServerMethodType, SessionListReq, SessionListRes, to_response
+from shared.frames_rpc import (
+    ErrorMessageRPC,
+    ErrorRes,
+    FrameType,
+    RequestUnion,
+    ResponseUnion,
+    SessionListReq,
+    SessionListRes,
+    ChatHistoryReq,
+    ChatHistoryRes,
+    to_response
+)
+from shared.messages import MessageUnion
 import websockets
 from websockets.asyncio.client import ClientConnection, connect
 
 from shared.frames import (
     Action,
     AssistantMessageEvent,
-    ChatHistoryAction,
     ChatHistoryEvent,
     Event,
     InterruptAction,
@@ -29,6 +40,25 @@ from shared.frames import (
 
 class BadServerResponseError(Exception):
     pass
+
+class SessionNotFound(Exception):
+    pass
+
+def validate_response(response: ResponseUnion):
+    if isinstance(response, ErrorRes):
+        match ErrorRes.message:
+            case ErrorMessageRPC.SESSION_NOT_FOUND:
+                raise SessionNotFound(ErrorMessageRPC.SESSION_NOT_FOUND)
+
+def validate_expected_response[T: ResponseUnion](
+    response: ResponseUnion,
+    *args: type[T]
+) -> T:
+    if not isinstance(response, args):
+        raise BadServerResponseError(
+            f"Wrong response method received; got {getattr(response, 'method', None)}, expected {args}"
+        )
+    return response
 
 class Client:
     def __init__(self, *args, **kwargs):
@@ -140,7 +170,6 @@ class Client:
     async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
     @overload
     async def send_request(self, request: RequestUnion[Literal[True]]) -> AsyncGenerator[ResponseUnion, None]: ...
-    
     async def send_request(self, request: RequestUnion[Any]) -> Union[AsyncGenerator[ResponseUnion, None], ResponseUnion]:
         if not self.websocket or not self.websocket.state == websockets.State.OPEN:
             raise ConnectionError("Unable to send the message, the client is not connected.")
@@ -161,6 +190,7 @@ class Client:
                 try:
                     while True:
                         response = await queue.get()
+                        validate_response(response)
                         yield response
                         if not response.has_more:
                             break
@@ -170,7 +200,9 @@ class Client:
             return generator()
         else:
             try:
-                return await queue.get()
+                response = await queue.get()
+                validate_response(response)
+                return response
             finally:
                 self.transactions.pop(req_id, None)
 
@@ -189,18 +221,17 @@ class Client:
     async def handle_chat_history(self, event: ChatHistoryEvent) -> None: ...
 
     async def list_sessions(self) -> list[str]:
-        response: SessionListRes = await self.send_request(SessionListReq())
-        if response.method != ServerMethodType.SESSION_LIST:
-            raise BadServerResponseError(
-                f"Wrong response method received; got {response.method}, excepted {ServerMethodType.SESSION_LIST}"
-            )
+        response = await self.send_request(SessionListReq())
+        response = validate_expected_response(response, SessionListRes)
         return response.sessions
 
     async def create_session(self) -> None:
         await self.send(SessionCreateAction())
 
-    async def load_chat_history(self, session_id: str) -> None:
-        await self.send(ChatHistoryAction(session_id=session_id))
+    async def load_chat_history(self, session_id: str) -> list[MessageUnion]:
+        response = await self.send_request(ChatHistoryReq(session_id=session_id))
+        response = validate_expected_response(response, ChatHistoryRes)
+        return response.messages
 
     def set_session(self, session_id: str) -> None:
         self.current_session_id = session_id
