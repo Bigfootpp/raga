@@ -26,7 +26,7 @@ class StatusType(StrEnum):
 class ServerMethodType(StrEnum):
     SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
-    # SEND_MESSAGE = "chat:send"
+    SEND_MESSAGE = "chat:send"
     # INTERRUPT = "chat:interrupt"
     CHAT_HISTORY = "chat:history"
     ERROR = "error"
@@ -178,6 +178,16 @@ class ChatHistoryRes(Response, frozen=True):
     method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
     messages: list[MessageUnion]
 
+class SendMessageReq[StreamType: bool_type](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
+    text: str
+    session_id: str
+
+class SendMessageRes(Response, frozen=True):
+    method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
+    thought_chunk: Optional[str]
+    chunk: Optional[str]
+
 # Client
 type ResponseType[ResType: Response] = Union[ResType, ErrorRes]
 
@@ -186,6 +196,7 @@ type RequestUnion[StreamType: bool_type] = Annotated[
         SessionListReq[StreamType],
         SessionCreateReq[StreamType],
         ChatHistoryReq[StreamType],
+        SendMessageReq[StreamType],
     ],
     Field(discriminator="method")
 ]
@@ -195,7 +206,8 @@ ResponseUnion = Annotated[
         SessionListRes,
         SessionCreateRes,
         ChatHistoryRes,
-        ErrorRes
+        SendMessageRes,
+        ErrorRes,
     ],
     Field(discriminator="method")
 ]

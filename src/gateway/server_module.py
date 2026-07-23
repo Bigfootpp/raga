@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator, AsyncIterator, Awaitable
+from typing import AsyncGenerator, AsyncIterator, Awaitable, Optional
 
 from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
 from agent_core.session_manager import SessionManager, SessionNotFound
@@ -11,6 +11,8 @@ from shared.frames_rpc import (
     ErrorMessageRPC,
     ErrorRes,
     ResponseType,
+    SendMessageReq,
+    SendMessageRes,
     SessionListReq,
     SessionListRes,
     SessionCreateReq,
@@ -34,11 +36,16 @@ from shared.frames import (
     ThoughtMessageEvent,
     UserMessageEvent,
 )
-from shared.messages import AssistantMessage
+from shared.messages import AssistantMessage, MessageUnion
 
 def idle_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.IDLE, session_id=session_id)
 def responding_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.RESPONDING, session_id=session_id)
 def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.THINKING, session_id=session_id)
+
+def build_send_message_response(request_id: str, message: AssistantMessage) -> SendMessageRes:
+    content = message.content
+    thought = message.reasoning_content or message.reasoning
+    return SendMessageRes(id=request_id, chunk=content, thought_chunk=thought)
 
 # TODO: Migrate chat:send to RPC
 class Server:
@@ -75,6 +82,27 @@ class Server:
             yield ChatHistoryRes(id=request.id, messages=session.history)
         except SessionNotFound:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
+
+    async def _send_message_request(self, request: SendMessageReq) -> AsyncGenerator[ResponseType[SendMessageRes], None]:
+        try:
+            last_chunk: Optional[MessageUnion] = None
+            async for chunk in self.harness.process_input(request.text, request.session_id):
+                if not isinstance(chunk, AssistantMessage):
+                    continue
+
+                if last_chunk:
+                    yield build_send_message_response(request.id, chunk)
+
+                last_chunk = chunk
+
+            if last_chunk:
+                yield build_send_message_response(request.id, last_chunk)
+
+        except AgentAlreadyRunning:
+            yield ErrorRes(id=request.id, message=ErrorMessageRPC.AGENT_RUNNING)
+
+        except ExecutionInterrupted:
+            return
 
     async def connect(self, ws: WebSocket) -> Awaitable[None]:
         return await self.connection_manager.connect(ws=ws)
