@@ -28,9 +28,10 @@ class Session:
     def revert(self) -> None:
         self.history = self._checkpoint.copy()
 
-    def load_history(self, history: list[MessageUnion]) -> None:
+    def load_history(self, history: list[MessageUnion], record: bool = True) -> None:
         self.history = history.copy()
-        self._checkpoint = history.copy()
+        if record:
+            self._checkpoint = history.copy()
 
     def add_message(self, message: MessageUnion) -> None:
         self.history.append(message)
