@@ -45,7 +45,7 @@ class Server:
     def __init__(self, session_manager: SessionManager) -> None:
         connection_manager = ConnectionManager()
         connection_manager.on(SessionListReq, self._session_list)
-        connection_manager.on(SessionCreateReq, self._session_create_request)
+        connection_manager.on(SessionCreateReq, self._session_create)
         connection_manager.on(ChatHistoryReq, self._chat_history)
 
         self.harness = Harness(session_manager)
@@ -62,7 +62,7 @@ class Server:
         sessions = await self.session_manager.get_session_ids()
         yield SessionListRes(sessions=sessions, id=request.id)
 
-    async def _session_create_request(self, request: SessionCreateReq) -> AsyncGenerator[ResponseType[SessionCreateRes], None]:
+    async def _session_create(self, request: SessionCreateReq) -> AsyncGenerator[ResponseType[SessionCreateRes], None]:
         session = await self.session_manager.new_session()
         if session.session_id:
             yield SessionCreateRes(id=request.id, session_id=session.session_id)
