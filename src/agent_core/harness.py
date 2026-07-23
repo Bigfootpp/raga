@@ -57,7 +57,7 @@ class Harness:
                 async for chunk in await agent.run():
                     if isinstance(chunk, AssistantMessage):
                         content = chunk.content
-                        thought = chunk.reasoning_content or chunk.reasoning
+                        thought = chunk.reasoning_content
                         if content:
                             final_chunks.append(content)
                         elif thought:
@@ -68,7 +68,6 @@ class Harness:
                 if thinking_chunks or final_chunks:
                     session.add_message(AssistantMessage(
                         reasoning_content="".join(thinking_chunks) if thinking_chunks else None,
-                        reasoning="".join(thinking_chunks) if thinking_chunks else None,
                         content="".join(final_chunks) if final_chunks else None
                     ))
             except asyncio.CancelledError:

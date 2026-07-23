@@ -5,21 +5,21 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Input, Label, Static, ListView, ListItem
 
 LOGO = r"""
-                 .                      
-                 )@@B                   
-          +U'    .8%x      .'           
-         p@@B^. ..)d" .  1B$@.          
-          .;^MWBI. 0  |%_#-W^           
-            ]w]U'  m . &:@.             
-         ' "L'  /|.@ W'  .%  ..         
-     .B$@d.0_:^.:(@@$l^.'la: B@@?       
-      ]BB` /n    z#%('.  .@  r%o        
-            B` -c  0 .%  O\             
-            'h0    Z    %^  .           
-         !BB%  <@%a#&@a  'BBd           
-         "BB%      O.    ~8@%           
-                 ]@@8                   
-                  BBq                                                                              
+                 .
+                 )@@B
+          +U'    .8%x      .'
+         p@@B^. ..)d" .  1B$@.
+          .;^MWBI. 0  |%_#-W^
+            ]w]U'  m . &:@.
+         ' "L'  /|.@ W'  .%  ..
+     .B$@d.0_:^.:(@@$l^.'la: B@@?
+      ]BB` /n    z#%('.  .@  r%o
+            B` -c  0 .%  O\
+            'h0    Z    %^  .
+         !BB%  <@%a#&@a  'BBd
+         "BB%      O.    ~8@%
+                 ]@@8
+                  BBq
 """
 
 
@@ -128,7 +128,7 @@ class MessageHistory(Container):
                     self.mount(UserMessageContainer(message.content))
                 case AssistantMessage():
                     content = message.content
-                    reasoning = message.reasoning or message.reasoning_content
+                    reasoning = message.reasoning_content
                     if reasoning:
                         self.mount(ThinkingMessageContainer(reasoning))
                     if content:

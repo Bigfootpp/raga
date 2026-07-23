@@ -53,7 +53,6 @@ class Session:
             msg = self.history[-1]
             updated = AssistantMessage(
                 content=content if content is not None else msg.content,
-                reasoning=reasoning if reasoning is not None else msg.reasoning,
                 reasoning_content=(
                     reasoning_content
                     if reasoning_content is not None
@@ -68,7 +67,6 @@ class Session:
 
         new_msg = AssistantMessage(
             content=content,
-            reasoning=reasoning,
             reasoning_content=reasoning_content if reasoning_content is not None else reasoning,
             tool_calls=tool_calls,
         )

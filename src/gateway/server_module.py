@@ -44,7 +44,7 @@ def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=St
 
 def build_send_message_response(request_id: str, message: AssistantMessage) -> SendMessageRes:
     content = message.content
-    thought = message.reasoning_content or message.reasoning
+    thought = message.reasoning_content
     return SendMessageRes(id=request_id, chunk=content, thought_chunk=thought)
 
 # TODO: Migrate chat:send to RPC
@@ -148,7 +148,7 @@ class Server:
                     continue
 
                 content = message.content
-                thought = message.reasoning_content or message.reasoning
+                thought = message.reasoning_content
 
                 if thought:
                     if last_yielded_status != thinking_status(action.session_id):

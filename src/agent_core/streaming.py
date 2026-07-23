@@ -21,7 +21,6 @@ class Stream:
 
                 if reasoning:
                     yield AssistantMessage(
-                        reasoning=chunk,
                         reasoning_content=chunk
                     )
                 else:
