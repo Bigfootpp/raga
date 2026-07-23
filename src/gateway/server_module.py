@@ -40,6 +40,7 @@ def idle_status(session_id: str) -> StatusEvent: return StatusEvent(state=Status
 def responding_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.RESPONDING, session_id=session_id)
 def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.THINKING, session_id=session_id)
 
+# TODO: Migrate chat:send to RPC
 class Server:
     def __init__(self, session_manager: SessionManager) -> None:
         connection_manager = ConnectionManager()
