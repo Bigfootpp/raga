@@ -25,7 +25,7 @@ class StatusType(StrEnum):
 # Client -> Server -> Client
 class ServerMethodType(StrEnum):
     SESSION_LIST = "sessions:list"
-    # SESSION_CREATE = "sessions:create"
+    SESSION_CREATE = "sessions:create"
     # SEND_MESSAGE = "chat:send"
     # INTERRUPT = "chat:interrupt"
     CHAT_HISTORY = "chat:history"
@@ -163,6 +163,13 @@ class SessionListRes(Response, frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
     sessions: list[str]
 
+class SessionCreateReq[StreamType: bool_type](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.SESSION_CREATE] = ServerMethodType.SESSION_CREATE
+
+class SessionCreateRes(Response, frozen=True):
+    method: Literal[ServerMethodType.SESSION_CREATE] = ServerMethodType.SESSION_CREATE
+    session_id: str
+
 class ChatHistoryReq[StreamType: bool_type](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
     session_id: str
@@ -177,6 +184,7 @@ type ResponseType[ResType: Response] = Union[ResType, ErrorRes]
 type RequestUnion[StreamType: bool_type] = Annotated[
     Union[
         SessionListReq[StreamType],
+        SessionCreateReq[StreamType],
         ChatHistoryReq[StreamType],
     ],
     Field(discriminator="method")
@@ -185,6 +193,7 @@ type RequestUnion[StreamType: bool_type] = Annotated[
 ResponseUnion = Annotated[
     Union[
         SessionListRes,
+        SessionCreateRes,
         ChatHistoryRes,
         ErrorRes
     ],

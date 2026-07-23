@@ -21,7 +21,6 @@ from shared.frames import (
     ThoughtChunkEvent,
     ThoughtMessageEvent,
     UserMessageEvent,
-    SessionCreateEvent,
 )
 from utils import async_utils
 
@@ -40,6 +39,7 @@ class TUI(Client, App):
         super().__init__(*args, **kwargs)
         self.current_response = ""
         self.current_reasoning = ""
+        self.current_session_id: Optional[str] = None
         self.status_lock = asyncio.Lock()
         self.feedback_lock = asyncio.Lock()
         self.session: Session = Session()
@@ -49,7 +49,7 @@ class TUI(Client, App):
     def reset_streaming_state(self) -> None:
         self.current_response = ""
         self.current_reasoning = ""
-    
+
     def _get_feedback_banner(self) -> Optional[Static]:
         try:
             return self.query_one("#feedback-banner", Static)
@@ -114,7 +114,7 @@ class TUI(Client, App):
             banner.styles.display = "block"
             await asyncio.sleep(duration)
             await self._hide_feedback()
-    
+
     async def _hide_feedback(self) -> None:
         banner = self._get_feedback_banner()
         if banner is None:
@@ -122,7 +122,7 @@ class TUI(Client, App):
 
         banner.update("")
         banner.styles.display = "none"
-    
+
     @async_utils.background_task
     async def set_status(self, text: str, lock_duration: int = 0):
         async with self.status_lock:
@@ -147,7 +147,7 @@ class TUI(Client, App):
             yield Static(" ⎈ RAGA ", id="status-badge")
             yield Static("label", id="status-metrics")
         yield InputRow(id="input-row")
-    
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
 
@@ -158,21 +158,23 @@ class TUI(Client, App):
             self.show_feedback("Not connected", duration=2)
             event.input.value = ""
             return
-        
+
         try:
-            await self.process_input(text)
+            if not self.current_session_id:
+                self.current_session_id = await self.create_session()
+            await self.process_input(self.current_session_id, text)
         except ConnectionError:
             self.show_feedback("Connection lost", duration=2)
         except ValueError as e:
             self.show_feedback(str(e), duration=2)
 
         event.input.value = ""
-    
+
     async def on_key(self, event: Key) -> None:
         if event.key == "escape":
             current_time = time.time()
             if current_time - self.last_escape_time < INTERRUPT_THRESHOLD:
-                await self.interrupt()
+                await self.interrupt_current_session()
                 self.last_escape_time = 0.0
             else:
                 self.last_escape_time = current_time
@@ -188,14 +190,15 @@ class TUI(Client, App):
         if self._session_list_visible:
             self.hide_session_list()
         else:
-            await self.interrupt()
-    
-    async def interrupt(self) -> None:
-        try:
-            await super().interrupt()
-        except ConnectionError:
-            pass
-    
+            await self.interrupt_current_session()
+
+    async def interrupt_current_session(self) -> None:
+        if self.current_session_id:
+            try:
+                await super().interrupt(self.current_session_id)
+            except ConnectionError:
+                pass
+
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         item = event.item
         if item and hasattr(item, 'session_id'):
@@ -204,9 +207,9 @@ class TUI(Client, App):
                 await self.select_session(session_id)
 
     async def load_session(self, session_id: str) -> None:
-        self.set_session(session_id)
-        self.session = Session(session_id=session_id)
         history = await self.load_chat_history(session_id)
+        self.current_session_id = session_id
+        self.session = Session(session_id=session_id)
         self.session.load_history(history)
         self.session.record()
         self.update_history(self.session)
@@ -214,16 +217,16 @@ class TUI(Client, App):
     async def select_session(self, session_id: str) -> None:
         await self.load_session(session_id)
         self.hide_session_list()
-    
+
     async def handle_disconnect(self) -> None:
         self.log("Disconnected")
         self.reset_streaming_state()
         self.set_status("disconnected")
-    
+
     async def handle_connect(self) -> None:
         self.log("Connected")
         self.set_status("connected")
-    
+
     def upsert_assistant_message(self, *, content: Optional[str] = None, reasoning: Optional[str] = None) -> None:
         if content is None and reasoning is None:
             return
@@ -236,14 +239,14 @@ class TUI(Client, App):
         self.current_response += event.chunk
         self.upsert_assistant_message(content=self.current_response)
         self.update_history(self.session)
-    
+
     async def handle_thought(self, event: ThoughtChunkEvent) -> None:
         self.log(event.chunk)
 
         self.current_reasoning += event.chunk
         self.upsert_assistant_message(reasoning=self.current_reasoning)
         self.update_history(self.session)
-    
+
     async def handle_user_message(self, event: UserMessageEvent) -> None:
         self.log(event.text)
 
@@ -251,7 +254,7 @@ class TUI(Client, App):
         self.session.record()
         self.update_history(self.session)
         self.reset_streaming_state()
-    
+
     async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
         self.log(event.text)
 
@@ -260,7 +263,7 @@ class TUI(Client, App):
         self.session.record()
         self.update_history(self.session)
         self.reset_streaming_state()
-    
+
     async def handle_thought_message(self, event: ThoughtMessageEvent) -> None:
         self.log(event.text)
 
@@ -268,12 +271,12 @@ class TUI(Client, App):
         self.upsert_assistant_message(reasoning=self.current_reasoning)
         self.update_history(self.session)
         self.current_response = ""
-    
+
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
         session_info = f" [{event.session_id[:8]}]" if event.session_id else ""
         self.set_status(f"status: {event.state}{session_info}")
-    
+
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)
 
@@ -287,19 +290,13 @@ class TUI(Client, App):
                 self.current_session_id = None
             case _:
                 self.show_feedback(str(event.message), duration=2)
-    
+
     async def handle_interrupted(self, event: InterruptedEvent) -> None:
         self.session.revert()
         self.update_history(self.session)
         self.reset_streaming_state()
         self.set_status("interrupted", lock_duration=2)
 
-    async def handle_session_create(self, event: SessionCreateEvent) -> None:
-        if event.session_id:
-            self.current_session_id = event.session_id
-            self.session = Session(session_id=event.session_id)
-            self.show_feedback(f"Session created: {event.session_id[:8]}", duration=2)
-    
     async def update_session_list(self):
         sessions = await self.list_sessions()
         session_list = self._get_session_list_widget()

@@ -9,6 +9,8 @@ from shared.frames_rpc import (
     FrameType,
     RequestUnion,
     ResponseUnion,
+    SessionCreateReq,
+    SessionCreateRes,
     SessionListReq,
     SessionListRes,
     ChatHistoryReq,
@@ -26,8 +28,6 @@ from shared.frames import (
     InterruptAction,
     InterruptedEvent,
     SendMessageAction,
-    SessionCreateAction,
-    SessionCreateEvent,
     StatusEvent,
     ResponseChunkEvent,
     ThoughtChunkEvent,
@@ -43,11 +43,19 @@ class BadServerResponseError(Exception):
 class SessionNotFound(Exception):
     pass
 
+class ServerInternalError(Exception):
+    pass
+
+VALIDATION_MAP: dict[ErrorMessageRPC, type[Exception]] = {
+    ErrorMessageRPC.SESSION_NOT_FOUND: SessionNotFound,
+    ErrorMessageRPC.INTERNAL_ERROR: ServerInternalError
+}
+
 def validate_response(response: ResponseUnion):
     if isinstance(response, ErrorRes):
-        match ErrorRes.message:
-            case ErrorMessageRPC.SESSION_NOT_FOUND:
-                raise SessionNotFound(ErrorMessageRPC.SESSION_NOT_FOUND)
+        error = VALIDATION_MAP.get(response.message, None)
+        if error:
+            raise error(response.message)
 
 def validate_expected_response[T: ResponseUnion](
     response: ResponseUnion,
@@ -65,8 +73,7 @@ class Client:
         self.uri = "ws://127.0.0.1:8000/ws"
         self.reconnect_delay = 1
         self.connected: bool = False
-        self.current_session_id: Optional[str] = None
-        
+
         self.websocket: Optional[ClientConnection] = None
         self.transactions: dict[str, asyncio.Queue[ResponseUnion]] = {}
         self._listen_task: Optional[asyncio.Task] = None
@@ -81,13 +88,12 @@ class Client:
             StatusEvent: self.handle_status,
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
-            SessionCreateEvent: self.handle_session_create,
         }
 
     async def connect(self):
         if self._running_connection:
             return
-            
+
         self._running_connection = True
         self._listen_task = asyncio.create_task(self._reconnect_loop())
 
@@ -97,9 +103,9 @@ class Client:
                 self.websocket = await connect(self.uri)
                 self.connected = True
                 await self.handle_connect()
-                
+
                 await self._listen_loop()
-                
+
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -122,7 +128,7 @@ class Client:
     async def _listen_loop(self):
         if not self.websocket:
             return
-            
+
         async for message in self.websocket:
             try:
                 frame_json: dict = json.loads(message)
@@ -143,7 +149,7 @@ class Client:
         handler = self._handlers.get(type(event))
         if handler:
             await handler(event)
-    
+
     async def send(self, action: Action):
         if self.websocket and self.websocket.state == websockets.State.OPEN:
             action_json = json.dumps(action.to_dict())
@@ -151,19 +157,13 @@ class Client:
         else:
             raise ConnectionError("Unable to send the message, the client is not connected.")
 
-    async def process_input(self, msg: str):
-        if not self.current_session_id:
-            await self.create_session()
-            await asyncio.sleep(0.1)
-        else:
-            await self.send(SendMessageAction(text=msg, session_id=self.current_session_id))
-    
-    async def interrupt(self):
-        if not self.current_session_id:
-            return
-        await self.send(InterruptAction(session_id=self.current_session_id))
-    
-    
+    async def process_input(self, session_id: str, msg: str):
+        await self.send(SendMessageAction(text=msg, session_id=session_id))
+
+    async def interrupt(self, session_id: str):
+        await self.send(InterruptAction(session_id=session_id))
+
+
     @overload
     async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
     @overload
@@ -171,7 +171,7 @@ class Client:
     async def send_request(self, request: RequestUnion[Any]) -> Union[AsyncGenerator[ResponseUnion, None], ResponseUnion]:
         if not self.websocket or not self.websocket.state == websockets.State.OPEN:
             raise ConnectionError("Unable to send the message, the client is not connected.")
-        
+
         req_id = request.id
         queue: asyncio.Queue[ResponseUnion] = asyncio.Queue()
         self.transactions[req_id] = queue
@@ -194,7 +194,7 @@ class Client:
                             break
                 finally:
                     self.transactions.pop(req_id, None)
-            
+
             return generator()
         else:
             try:
@@ -215,23 +215,21 @@ class Client:
     async def handle_status(self, event: StatusEvent) -> None: ...
     async def handle_error(self, event: ErrorEvent) -> None: ...
     async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
-    async def handle_session_create(self, event: SessionCreateEvent) -> None: ...
 
     async def list_sessions(self) -> list[str]:
         response = await self.send_request(SessionListReq())
         response = validate_expected_response(response, SessionListRes)
         return response.sessions
 
-    async def create_session(self) -> None:
-        await self.send(SessionCreateAction())
+    async def create_session(self) -> str:
+        response = await self.send_request(SessionCreateReq())
+        response = validate_expected_response(response, SessionCreateRes)
+        return response.session_id
 
     async def load_chat_history(self, session_id: str) -> list[MessageUnion]:
         response = await self.send_request(ChatHistoryReq(session_id=session_id))
         response = validate_expected_response(response, ChatHistoryRes)
         return response.messages
-
-    def set_session(self, session_id: str) -> None:
-        self.current_session_id = session_id
 
     async def close(self):
         self._running_connection = False
