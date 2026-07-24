@@ -7,7 +7,7 @@ from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
 from fastapi.websockets import WebSocketState
 from pydantic import ValidationError
 
-from shared.frames_rpc import (
+from shared.frames import (
     ErrorMessageRPC,
     ErrorRes,
     FrameType,

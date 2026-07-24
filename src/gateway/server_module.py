@@ -11,7 +11,7 @@ from agent_core.harness import (
 from agent_core.session_manager import SessionManager, SessionNotFound
 from gateway.connection_manager import ConnectionManager
 from shared.config import config
-from shared.frames_rpc import (
+from shared.frames import (
     ChatHistoryReq,
     ChatHistoryRes,
     ErrorMessageRPC,

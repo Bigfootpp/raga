@@ -7,7 +7,7 @@ import websockets
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 
-from shared.frames_rpc import (
+from shared.frames import (
     ChatHistoryReq,
     ChatHistoryRes,
     ErrorMessageRPC,
