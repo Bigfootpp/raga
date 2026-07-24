@@ -10,9 +10,9 @@ class SessionNotFound(Exception):
 class SessionManager:
     def __init__(self, repo: SessionRepository):
         self._repo = repo
-    
+
     @classmethod
-    async def create(cls, path: Path) -> "SessionManager":
+    async def create(cls, path: Path | str) -> "SessionManager":
         return cls(await SessionRepository.create(path=path))
 
     async def new_session(self, title: str = "Untitled Session") -> Session:
@@ -27,10 +27,10 @@ class SessionManager:
         session = Session(session_id=session_id)
         session.load_history(messages)
         return session
-    
+
     async def get_session_ids(self) -> list[str]:
         return await self._repo.get_session_ids()
-    
+
     async def get_sessions(self) -> list[Session]:
         session_ids = await self.get_session_ids()
         sessions = [await self.load_session(id) for id in session_ids]

@@ -8,13 +8,21 @@ from uuid import uuid4
 
 from shared.messages import MessageUnion, message_adapter
 
+db_cache: dict[Path | str, Connection] = {}
 
-async def _get_db(path: Path) -> Connection:
-    path.parent.mkdir(parents=True, exist_ok=True)
+async def _get_db(path: Path | str) -> Connection:
+    cached_db = db_cache.get(path)
+    if cached_db:
+        return cached_db
+    if path != ":memory:":
+        if isinstance(path, str):
+            path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
     db = await aiosqlite.connect(path)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode = WAL;")
     await db.execute("PRAGMA foreign_keys = ON;")
+    db_cache[path] = db
     return db
 
 
@@ -43,22 +51,22 @@ class DatabaseError(Exception):
     pass
 
 class SessionRepository:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path | str):
         self._path = path
 
     @classmethod
-    async def create(cls, path: Path) -> "SessionRepository":
+    async def create(cls, path: Path | str) -> "SessionRepository":
         db = await _get_db(path)
         await init_db(db)
         return cls(path)
-    
+
     @asynccontextmanager
     async def get_db(self):
         db = await _get_db(self._path)
         try:
             yield db
         finally:
-            await db.close()
+            pass
 
     async def create_session(self, title: str = "New Session") -> str:
         session_id = str(uuid4())
@@ -126,11 +134,11 @@ class SessionRepository:
     async def append_messages_batch(self, session_id: str, messages: list[MessageUnion]) -> list[int]:
         if not messages:
             return []
-            
+
         ids = []
         async with self.get_db() as db:
             await db.execute("BEGIN TRANSACTION;")
-            
+
             try:
                 for m in messages:
                     data_json = m.model_dump_json(exclude_none=True)
@@ -141,15 +149,15 @@ class SessionRepository:
                     if cur.lastrowid is None:
                         raise DatabaseError("Failed to insert message into the database")
                     ids.append(cur.lastrowid)
-                    
+
                 await db.commit()
-                
+
             except Exception:
                 await db.rollback()
                 raise
-                
+
             return ids
-        
+
     async def rewind_user_messages(self, session_id: str, n: int = 1) -> int:
         async with self.get_db() as db:
             cur = await db.execute(
@@ -163,7 +171,7 @@ class SessionRepository:
             )
             row = await cur.fetchone()
             if not row:
-                return 0 
+                return 0
 
             cutoff_id = row["id"]
 
