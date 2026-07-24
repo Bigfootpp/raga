@@ -7,6 +7,7 @@ from shared.messages import MessageUnion
 
 class ErrorMessageRPC(StrEnum):
     INVALID_FORMAT = "Invalid format"
+    STREAM_REQUIRED = "Request need to be stream"
     SESSION_NOT_FOUND = "Session doesn't exist"
     AGENT_RUNNING = "Agent already running"
     AGENT_NOT_RUNNING = "Agent is not running"
@@ -185,8 +186,8 @@ class SendMessageReq[StreamType: bool_type](Request[StreamType], frozen=True):
 
 class SendMessageRes(Response, frozen=True):
     method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
-    thought_chunk: Optional[str]
-    chunk: Optional[str]
+    reasoning_content: Optional[str]
+    content: Optional[str]
 
 # Client
 type ResponseType[ResType: Response] = Union[ResType, ErrorRes]

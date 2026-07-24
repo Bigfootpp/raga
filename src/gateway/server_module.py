@@ -18,23 +18,16 @@ from shared.frames_rpc import (
     SessionCreateReq,
     SessionCreateRes,
 )
-from utils.async_utils import aenumerate
 from shared.config import config
 from shared.frames import (
     Action,
-    AssistantMessageEvent,
     ErrorEvent,
     ErrorMessage,
     Event,
     InterruptAction,
     InterruptedEvent,
-    SendMessageAction,
     StatusEvent,
-    ResponseChunkEvent,
-    ThoughtChunkEvent,
     StatusType,
-    ThoughtMessageEvent,
-    UserMessageEvent,
 )
 from shared.messages import AssistantMessage, MessageUnion
 
@@ -42,10 +35,10 @@ def idle_status(session_id: str) -> StatusEvent: return StatusEvent(state=Status
 def responding_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.RESPONDING, session_id=session_id)
 def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.THINKING, session_id=session_id)
 
-def build_send_message_response(request_id: str, message: AssistantMessage) -> SendMessageRes:
+def build_send_message_response(request_id: str, has_more: bool, message: AssistantMessage) -> SendMessageRes:
     content = message.content
     thought = message.reasoning_content
-    return SendMessageRes(id=request_id, chunk=content, thought_chunk=thought)
+    return SendMessageRes(id=request_id, has_more=has_more, content=content, reasoning_content=thought)
 
 # TODO: Migrate chat:send to RPC
 class Server:
@@ -54,6 +47,7 @@ class Server:
         connection_manager.on(SessionListReq, self._session_list)
         connection_manager.on(SessionCreateReq, self._session_create)
         connection_manager.on(ChatHistoryReq, self._chat_history)
+        connection_manager.on(SendMessageReq, self._send_message)
 
         self.harness = Harness(session_manager)
         self.session_manager = session_manager
@@ -83,7 +77,10 @@ class Server:
         except SessionNotFound:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
 
-    async def _send_message_request(self, request: SendMessageReq) -> AsyncGenerator[ResponseType[SendMessageRes], None]:
+    async def _send_message(self, request: SendMessageReq) -> AsyncGenerator[ResponseType[SendMessageRes], None]:
+        if not request.stream:
+            yield ErrorRes(id=request.id, message=ErrorMessageRPC.STREAM_REQUIRED)
+
         try:
             last_chunk: Optional[MessageUnion] = None
             async for chunk in self.harness.process_input(request.text, request.session_id):
@@ -91,15 +88,18 @@ class Server:
                     continue
 
                 if last_chunk:
-                    yield build_send_message_response(request.id, chunk)
+                    yield build_send_message_response(request_id=request.id, has_more=True, message=last_chunk)
 
                 last_chunk = chunk
 
             if last_chunk:
-                yield build_send_message_response(request.id, last_chunk)
+                yield build_send_message_response(request_id=request.id, has_more=False, message=last_chunk)
 
         except AgentAlreadyRunning:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.AGENT_RUNNING)
+
+        except SessionNotFound:
+            yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
 
         except ExecutionInterrupted:
             return
@@ -132,60 +132,8 @@ class Server:
         except SessionNotFound:
             yield ErrorEvent(message=ErrorMessage.SESSION_NOT_FOUND)
 
-    async def _send_message(self, action: SendMessageAction) -> AsyncIterator[Event]:
-        thought_chunks: list[str] = []
-        final_chunks: list[str] = []
-
-        last_yielded_status = idle_status(action.session_id)
-        final_response_started = False
-
-        try:
-            async for i, message in aenumerate(self.harness.process_input(action.text, action.session_id)):
-                if i == 0:
-                    yield UserMessageEvent(text=action.text, session_id=action.session_id)
-
-                if not isinstance(message, AssistantMessage):
-                    continue
-
-                content = message.content
-                thought = message.reasoning_content
-
-                if thought:
-                    if last_yielded_status != thinking_status(action.session_id):
-                        last_yielded_status = thinking_status(action.session_id)
-                        yield last_yielded_status
-
-                    thought_chunks.append(thought)
-                    yield ThoughtChunkEvent(session_id=action.session_id, chunk=thought)
-                    continue
-
-                if content:
-                    if not final_response_started and thought_chunks:
-                        yield ThoughtMessageEvent(text="".join(thought_chunks), session_id=action.session_id)
-                        thought_chunks.clear()
-
-                    if last_yielded_status != responding_status(action.session_id):
-                        last_yielded_status = responding_status(action.session_id)
-                        yield last_yielded_status
-
-                    final_response_started = True
-                    final_chunks.append(content)
-                    yield ResponseChunkEvent(session_id=action.session_id, chunk=content)
-        except AgentAlreadyRunning:
-            yield ErrorEvent(message=ErrorMessage.AGENT_RUNNING)
-            return
-
-        except ExecutionInterrupted:
-            return
-
-        yield AssistantMessageEvent(text="".join(final_chunks), session_id=action.session_id)
-        yield idle_status(action.session_id)
-
     async def _dispatch(self, action: Action) -> AsyncIterator[Event]:
         match action:
-            case SendMessageAction():
-                async for event in self._send_message(action):
-                    yield event
             case InterruptAction():
                 async for event in self._interrupt(action):
                     yield event

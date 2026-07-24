@@ -16,17 +16,11 @@ class ErrorMessage(StrEnum):
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
-    RESPONSE = "chat:streaming:response"
-    THOUGHT = "chat:streaming:thought"
-    USER_MESSAGE = "chat:message:user"
-    ASSISTANT_MESSAGE = "chat:message:assistant"
-    THOUGHT_MESSAGE = "chat:message:thought"
     STATUS = "chat:status"
     ERROR = "chat:error"
     INTERRUPTED = "chat:interrupted"
 
 class ActionType(StrEnum):
-    SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
 
 FrameType = EventType | ActionType
@@ -80,36 +74,6 @@ class StatusEvent(Event, frozen=True):
     session_id: str
     state: StatusType
 
-class UserMessageEvent(Event, frozen=True):
-    type: Literal[EventType.USER_MESSAGE] = EventType.USER_MESSAGE
-    session_id: str
-    text: str
-
-class AssistantMessageEvent(Event, frozen=True):
-    type: Literal[EventType.ASSISTANT_MESSAGE] = EventType.ASSISTANT_MESSAGE
-    session_id: str
-    text: str
-
-class ThoughtMessageEvent(Event, frozen=True):
-    type: Literal[EventType.THOUGHT_MESSAGE] = EventType.THOUGHT_MESSAGE
-    session_id: str
-    text: str
-
-class ResponseChunkEvent(Event, frozen=True):
-    type: Literal[EventType.RESPONSE] = EventType.RESPONSE
-    session_id: str
-    chunk: str
-
-class ThoughtChunkEvent(Event, frozen=True):
-    type: Literal[EventType.THOUGHT] = EventType.THOUGHT
-    session_id: str
-    chunk: str
-
-class SendMessageAction(Action, frozen=True):
-    type: Literal[ActionType.SEND_MESSAGE] = ActionType.SEND_MESSAGE
-    session_id: str
-    text: str
-
 class InterruptAction(Action, frozen=True):
     type: Literal[ActionType.INTERRUPT] = ActionType.INTERRUPT
     session_id: str
@@ -119,11 +83,6 @@ EventUnion = Annotated[
     Union[
         ErrorEvent,
         StatusEvent,
-        ResponseChunkEvent,
-        ThoughtChunkEvent,
-        UserMessageEvent,
-        AssistantMessageEvent,
-        ThoughtMessageEvent,
         InterruptedEvent,
     ],
     Field(discriminator="type"),
@@ -131,7 +90,6 @@ EventUnion = Annotated[
 
 ActionUnion = Annotated[
     Union[
-        SendMessageAction,
         InterruptAction,
     ],
     Field(discriminator="type")

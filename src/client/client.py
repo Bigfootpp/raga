@@ -9,6 +9,8 @@ from shared.frames_rpc import (
     FrameType,
     RequestUnion,
     ResponseUnion,
+    SendMessageReq,
+    SendMessageRes,
     SessionCreateReq,
     SessionCreateRes,
     SessionListReq,
@@ -17,23 +19,17 @@ from shared.frames_rpc import (
     ChatHistoryRes,
     to_response
 )
-from shared.messages import MessageUnion
+from shared.messages import AssistantMessage, MessageUnion
 import websockets
 from websockets.asyncio.client import ClientConnection, connect
 
 from shared.frames import (
     Action,
-    AssistantMessageEvent,
     Event,
     InterruptAction,
     InterruptedEvent,
-    SendMessageAction,
     StatusEvent,
-    ResponseChunkEvent,
-    ThoughtChunkEvent,
     ErrorEvent,
-    ThoughtMessageEvent,
-    UserMessageEvent,
     to_event
 )
 
@@ -46,9 +42,17 @@ class SessionNotFound(Exception):
 class ServerInternalError(Exception):
     pass
 
+class AgentRunningError(Exception):
+    pass
+
+class StreamRequiredError(Exception):
+    pass
+
 VALIDATION_MAP: dict[ErrorMessageRPC, type[Exception]] = {
     ErrorMessageRPC.SESSION_NOT_FOUND: SessionNotFound,
-    ErrorMessageRPC.INTERNAL_ERROR: ServerInternalError
+    ErrorMessageRPC.INTERNAL_ERROR: ServerInternalError,
+    ErrorMessageRPC.AGENT_RUNNING: AgentRunningError,
+    ErrorMessageRPC.STREAM_REQUIRED: StreamRequiredError,
 }
 
 def validate_response(response: ResponseUnion):
@@ -80,11 +84,6 @@ class Client:
         self._running_connection: bool = False
         self._background_tasks = set()
         self._handlers: dict[Type[Event], Callable[[Any], Awaitable[None]]] = {
-            UserMessageEvent: self.handle_user_message,
-            AssistantMessageEvent: self.handle_assistant_message,
-            ThoughtMessageEvent: self.handle_thought_message,
-            ResponseChunkEvent: self.handle_response,
-            ThoughtChunkEvent: self.handle_thought,
             StatusEvent: self.handle_status,
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
@@ -157,9 +156,6 @@ class Client:
         else:
             raise ConnectionError("Unable to send the message, the client is not connected.")
 
-    async def process_input(self, session_id: str, msg: str):
-        await self.send(SendMessageAction(text=msg, session_id=session_id))
-
     async def interrupt(self, session_id: str):
         await self.send(InterruptAction(session_id=session_id))
 
@@ -207,11 +203,6 @@ class Client:
 
     async def handle_connect(self) -> None: ...
     async def handle_disconnect(self) -> None: ...
-    async def handle_user_message(self, event: UserMessageEvent) -> None: ...
-    async def handle_assistant_message(self, event: AssistantMessageEvent) -> None: ...
-    async def handle_thought_message(self, event: ThoughtMessageEvent) -> None: ...
-    async def handle_response(self, event: ResponseChunkEvent) -> None: ...
-    async def handle_thought(self, event: ThoughtChunkEvent) -> None: ...
     async def handle_status(self, event: StatusEvent) -> None: ...
     async def handle_error(self, event: ErrorEvent) -> None: ...
     async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
@@ -230,6 +221,14 @@ class Client:
         response = await self.send_request(ChatHistoryReq(session_id=session_id))
         response = validate_expected_response(response, ChatHistoryRes)
         return response.messages
+
+    async def process_input(self, session_id: str, msg: str) -> AsyncGenerator[MessageUnion, None]:
+        async for chunk in await self.send_request(SendMessageReq(session_id=session_id, stream=True, text=msg)):
+            chunk = validate_expected_response(chunk, SendMessageRes)
+            yield AssistantMessage(
+                content=chunk.content,
+                reasoning_content=chunk.reasoning_content
+            )
 
     async def close(self):
         self._running_connection = False

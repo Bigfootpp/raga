@@ -4,7 +4,7 @@ from typing import Optional
 
 from client.client import Client
 from client.tui.widgets import InfoBox, InputRow, MessageHistory, SessionList
-from shared.messages import UserMessage
+from shared.messages import AssistantMessage, UserMessage
 from agent_core.session import Session
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
@@ -12,15 +12,10 @@ from textual.css.query import NoMatches
 from textual.events import Key
 from textual.widgets import Input, Static, ListView
 from shared.frames import (
-    AssistantMessageEvent,
     ErrorEvent,
     ErrorMessage,
     InterruptedEvent,
-    ResponseChunkEvent,
     StatusEvent,
-    ThoughtChunkEvent,
-    ThoughtMessageEvent,
-    UserMessageEvent,
 )
 from utils import async_utils
 
@@ -148,28 +143,6 @@ class TUI(Client, App):
             yield Static("label", id="status-metrics")
         yield InputRow(id="input-row")
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
-
-        if not text:
-            return
-
-        if not self.connected:
-            self.show_feedback("Not connected", duration=2)
-            event.input.value = ""
-            return
-
-        try:
-            if not self.current_session_id:
-                self.current_session_id = await self.create_session()
-            await self.process_input(self.current_session_id, text)
-        except ConnectionError:
-            self.show_feedback("Connection lost", duration=2)
-        except ValueError as e:
-            self.show_feedback(str(e), duration=2)
-
-        event.input.value = ""
-
     async def on_key(self, event: Key) -> None:
         if event.key == "escape":
             current_time = time.time()
@@ -233,44 +206,44 @@ class TUI(Client, App):
 
         self.session.upsert_assistant_message(content=content, reasoning=reasoning)
 
-    async def handle_response(self, event: ResponseChunkEvent) -> None:
-        self.log(event.chunk)
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value.strip()
 
-        self.current_response += event.chunk
-        self.upsert_assistant_message(content=self.current_response)
-        self.update_history(self.session)
+        if not text:
+            return
 
-    async def handle_thought(self, event: ThoughtChunkEvent) -> None:
-        self.log(event.chunk)
+        if not self.connected:
+            self.show_feedback("Not connected", duration=2)
+            event.input.value = ""
+            return
 
-        self.current_reasoning += event.chunk
-        self.upsert_assistant_message(reasoning=self.current_reasoning)
-        self.update_history(self.session)
+        event.input.value = ""
+        try:
+            if not self.current_session_id:
+                self.current_session_id = await self.create_session()
 
-    async def handle_user_message(self, event: UserMessageEvent) -> None:
-        self.log(event.text)
+            current_response = ""
+            current_reasoning = ""
 
-        self.session.add_message(UserMessage(content=event.text))
-        self.session.record()
-        self.update_history(self.session)
-        self.reset_streaming_state()
+            self.session.add_message(UserMessage(content=text))
+            self.session.record()
+            self.update_history(self.session)
 
-    async def handle_assistant_message(self, event: AssistantMessageEvent) -> None:
-        self.log(event.text)
+            async for chunk in self.process_input(self.current_session_id, text):
+                if not isinstance(chunk, AssistantMessage):
+                    continue
+                current_response += chunk.content or ""
+                current_reasoning += chunk.reasoning_content or ""
+                self.upsert_assistant_message(content=current_response, reasoning=current_reasoning)
+                self.update_history(self.session)
 
-        self.current_response = event.text
-        self.upsert_assistant_message(content=self.current_response)
-        self.session.record()
-        self.update_history(self.session)
-        self.reset_streaming_state()
+            self.session.record()
+            self.update_history(self.session)
 
-    async def handle_thought_message(self, event: ThoughtMessageEvent) -> None:
-        self.log(event.text)
-
-        self.current_reasoning = event.text
-        self.upsert_assistant_message(reasoning=self.current_reasoning)
-        self.update_history(self.session)
-        self.current_response = ""
+        except ConnectionError:
+            self.show_feedback("Connection lost", duration=2)
+        except ValueError as e:
+            self.show_feedback(str(e), duration=2)
 
     async def handle_status(self, event: StatusEvent) -> None:
         self.log(event.state)
