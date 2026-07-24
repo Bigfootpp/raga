@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, AsyncGenerator
 from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
 from pydantic import ValidationError
 from shared.frames import Action, ActionUnion, ErrorEvent, ErrorMessage, to_action
-from shared.frames_rpc import FrameType, RequestUnion, ResponseUnion, to_request
+from shared.frames_rpc import ErrorMessageRPC, ErrorRes, FrameType, RequestUnion, ResponseUnion, to_request
 from utils import async_utils
 
 
@@ -24,17 +24,17 @@ class Transaction:
         self.request = request
         self.stream = request.stream
         self.lock = asyncio.Lock()
-    
+
     def get_request(self):
         return self.request
-    
+
     async def send_response(self, response: ResponseUnion, disconnect_ok: bool = False):
         async with self.lock:
             if not self.open:
                 raise TransactionClosedError(f"Transaction {self.request.id} is already closed")
             if response.id != self.request.id:
                 raise TransactionMismatchError(f"Response id {response.id} does not match request id {self.request.id}")
-            
+
             try:
                 await self.ws.send_json(response.to_dict())
             except WebSocketDisconnect | WebSocketException:
@@ -49,13 +49,13 @@ class ConnectionManager:
         self.tasks: dict[WebSocket, asyncio.Task] = {}
         self.action_queue: asyncio.Queue[tuple[WebSocket, ActionUnion]] = asyncio.Queue()
         self.handlers: dict[type[RequestUnion], Callable[[Any], AsyncGenerator[ResponseUnion, None]]] = {}
-    
+
     def _resolve_handler(self, request: RequestUnion) -> Callable[[Any], AsyncGenerator[ResponseUnion, None]] | None:
         for request_type, handler in self.handlers.items():
             if isinstance(request, request_type):
                 return handler
         return None
-    
+
     async def connect(self, ws: WebSocket) -> Awaitable[None]:
         self.connections.add(ws)
         task = asyncio.create_task(self._listen_loop(ws=ws))
@@ -67,20 +67,20 @@ class ConnectionManager:
         event = self.events.get(ws)
         if event is None:
             return
-        
+
         await event.wait()
         self.events.pop(ws)
-    
+
     def on[TRequest: RequestUnion](
         self,
         request: type[TRequest],
         func: Callable[[TRequest], AsyncGenerator[ResponseUnion, None]],
-    ):  
+    ):
         self.handlers[request] = func
-    
+
     async def recv_action(self) -> tuple[WebSocket, Action]:
         return await self.action_queue.get()
-    
+
     async def handle_error(self, e: Exception, ws: WebSocket) -> bool:
         print(f"Error: ({e.__class__.__name__})")
         unexpected = False
@@ -101,7 +101,7 @@ class ConnectionManager:
                     await ws.send_json(ErrorEvent(message=ErrorMessage.INTERNAL_ERROR).to_dict())
                 except Exception:
                     need_break = True
-        
+
         if unexpected:
             print(traceback.print_exc())
         return need_break
@@ -124,6 +124,14 @@ class ConnectionManager:
                     pass
                 finally:
                     await gen.aclose()
+            except Exception:
+                try:
+                    await transaction.send_response(
+                        ErrorRes(id=request.id, message=ErrorMessageRPC.INTERNAL_ERROR),
+                        disconnect_ok=True
+                    )
+                except TransactionClosedError | TransactionMismatchError:
+                    pass
 
     async def _listen_loop(self, ws: WebSocket):
         while True:
