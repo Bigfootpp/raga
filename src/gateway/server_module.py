@@ -40,7 +40,7 @@ def build_send_message_response(request_id: str, has_more: bool, message: Assist
     thought = message.reasoning_content
     return SendMessageRes(id=request_id, has_more=has_more, content=content, reasoning_content=thought)
 
-# TODO: Migrate chat:send to RPC
+# TODO: Migrate chat:interrupt to RPC
 class Server:
     def __init__(self, session_manager: SessionManager) -> None:
         connection_manager = ConnectionManager()
