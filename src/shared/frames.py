@@ -5,11 +5,6 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, TypeAdapter, model_serializer, model_validator
 
 
-class StatusType(StrEnum):
-    IDLE = "idle"
-    RESPONDING = "responding"
-    THINKING = "thinking"
-
 class ErrorMessage(StrEnum):
     INVALID_FORMAT = "Invalid format"
     SESSION_NOT_FOUND = "Session doesn't exist"
