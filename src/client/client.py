@@ -13,7 +13,6 @@ from shared.frames import (
     Event,
     InterruptAction,
     InterruptedEvent,
-    StatusEvent,
     to_event,
 )
 from shared.frames_rpc import (
@@ -86,7 +85,6 @@ class Client:
         self._running_connection: bool = False
         self._background_tasks = set()
         self._handlers: dict[type[Event], Callable[[Any], Awaitable[None]]] = {
-            StatusEvent: self.handle_status,
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
         }
@@ -203,7 +201,6 @@ class Client:
 
     async def handle_connect(self) -> None: ...
     async def handle_disconnect(self) -> None: ...
-    async def handle_status(self, event: StatusEvent) -> None: ...
     async def handle_error(self, event: ErrorEvent) -> None: ...
     async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
 

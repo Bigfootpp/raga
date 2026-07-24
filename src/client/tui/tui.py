@@ -16,7 +16,6 @@ from shared.frames import (
     ErrorEvent,
     ErrorMessage,
     InterruptedEvent,
-    StatusEvent,
 )
 from shared.messages import AssistantMessage, UserMessage
 from utils import async_utils
@@ -250,11 +249,6 @@ class TUI(Client, App):
             self.show_feedback("Connection lost", duration=2)
         except ValueError as e:
             self.show_feedback(str(e), duration=2)
-
-    async def handle_status(self, event: StatusEvent) -> None:
-        self.log(event.state)
-        session_info = f" [{event.session_id[:8]}]" if event.session_id else ""
-        self.set_status(f"status: {event.state}{session_info}")
 
     async def handle_error(self, event: ErrorEvent) -> None:
         self.log(event.message)

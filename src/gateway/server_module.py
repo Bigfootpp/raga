@@ -19,8 +19,6 @@ from shared.frames import (
     Event,
     InterruptAction,
     InterruptedEvent,
-    StatusEvent,
-    StatusType,
 )
 from shared.frames_rpc import (
     ChatHistoryReq,
@@ -37,10 +35,6 @@ from shared.frames_rpc import (
 )
 from shared.messages import AssistantMessage, MessageUnion
 
-
-def idle_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.IDLE, session_id=session_id)
-def responding_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.RESPONDING, session_id=session_id)
-def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.THINKING, session_id=session_id)
 
 def build_send_message_response(request_id: str, has_more: bool, message: AssistantMessage) -> SendMessageRes:
     content = message.content
@@ -133,7 +127,6 @@ class Server:
         try:
             await self.harness.interrupt(action.session_id)
             yield InterruptedEvent()
-            yield idle_status(action.session_id)
         except AgentNotRunning:
             yield ErrorEvent(message=ErrorMessage.AGENT_NOT_RUNNING)
         except SessionNotFound:

@@ -18,7 +18,6 @@ class ErrorMessage(StrEnum):
     INTERNAL_ERROR = "An internal error occurred during processing."
 
 class EventType(StrEnum):
-    STATUS = "chat:status"
     ERROR = "chat:error"
     INTERRUPTED = "chat:interrupted"
 
@@ -71,18 +70,13 @@ class ErrorEvent(Event, frozen=True):
     message: ErrorMessage
     details: list | dict | str | None = None
 
-class StatusEvent(Event, frozen=True):
-    type: Literal[EventType.STATUS] = EventType.STATUS
-    session_id: str
-    state: StatusType
-
 class InterruptAction(Action, frozen=True):
     type: Literal[ActionType.INTERRUPT] = ActionType.INTERRUPT
     session_id: str
 
 
 EventUnion = Annotated[
-    ErrorEvent | StatusEvent | InterruptedEvent,
+    ErrorEvent | InterruptedEvent,
     Field(discriminator="type"),
 ]
 
