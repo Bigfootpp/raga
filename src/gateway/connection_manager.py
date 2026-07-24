@@ -8,7 +8,7 @@ from fastapi.websockets import WebSocketState
 from pydantic import ValidationError
 
 from shared.frames import (
-    ErrorMessageRPC,
+    ErrorMessage,
     ErrorRes,
     FrameType,
     RequestUnion,
@@ -106,7 +106,7 @@ class ConnectionManager:
             except Exception:
                 try:
                     await transaction.send_response(
-                        ErrorRes(id=request.id, message=ErrorMessageRPC.INTERNAL_ERROR),
+                        ErrorRes(id=request.id, message=ErrorMessage.INTERNAL_ERROR),
                         disconnect_ok=True
                     )
                 except (TransactionClosedError, TransactionMismatchError):
@@ -130,7 +130,7 @@ class ConnectionManager:
                     frame_json: dict = json.loads(data)
                     req_id = frame_json.get("id", None)
                     if req_id:
-                        await ws.send_json(ErrorRes(id=req_id, message=ErrorMessageRPC.INVALID_FORMAT).to_dict())
+                        await ws.send_json(ErrorRes(id=req_id, message=ErrorMessage.INVALID_FORMAT).to_dict())
                     else:
                         break
                 except asyncio.CancelledError:

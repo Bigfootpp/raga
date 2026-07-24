@@ -10,7 +10,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from shared.frames import (
     ChatHistoryReq,
     ChatHistoryRes,
-    ErrorMessageRPC,
+    ErrorMessage,
     ErrorRes,
     FrameType,
     InterruptReq,
@@ -46,12 +46,12 @@ class AgentNotRunningError(Exception):
 class StreamRequiredError(Exception):
     pass
 
-VALIDATION_MAP: dict[ErrorMessageRPC, type[Exception]] = {
-    ErrorMessageRPC.SESSION_NOT_FOUND: SessionNotFound,
-    ErrorMessageRPC.INTERNAL_ERROR: ServerInternalError,
-    ErrorMessageRPC.AGENT_RUNNING: AgentRunningError,
-    ErrorMessageRPC.AGENT_NOT_RUNNING: AgentNotRunningError,
-    ErrorMessageRPC.STREAM_REQUIRED: StreamRequiredError,
+VALIDATION_MAP: dict[ErrorMessage, type[Exception]] = {
+    ErrorMessage.SESSION_NOT_FOUND: SessionNotFound,
+    ErrorMessage.INTERNAL_ERROR: ServerInternalError,
+    ErrorMessage.AGENT_RUNNING: AgentRunningError,
+    ErrorMessage.AGENT_NOT_RUNNING: AgentNotRunningError,
+    ErrorMessage.STREAM_REQUIRED: StreamRequiredError,
 }
 
 def validate_response(response: ResponseUnion):

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, TypeAdapter, model_serializer, model_vali
 from shared.messages import MessageUnion
 
 
-class ErrorMessageRPC(StrEnum):
+class ErrorMessage(StrEnum):
     INVALID_FORMAT = "Invalid format"
     STREAM_REQUIRED = "Request need to be stream"
     SESSION_NOT_FOUND = "Session doesn't exist"
@@ -157,7 +157,7 @@ class Event(BaseModel, frozen=True):
 # Server
 class ErrorRes(Response, frozen=True):
     method: Literal[ServerMethodType.ERROR] = ServerMethodType.ERROR
-    message: ErrorMessageRPC
+    message: ErrorMessage
     details: list | dict | str | None = None
 
 class SessionListReq[StreamType: BoolType](Request[StreamType], frozen=True):

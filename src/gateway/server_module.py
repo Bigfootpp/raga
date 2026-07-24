@@ -14,7 +14,7 @@ from shared.config import config
 from shared.frames import (
     ChatHistoryReq,
     ChatHistoryRes,
-    ErrorMessageRPC,
+    ErrorMessage,
     ErrorRes,
     InterruptReq,
     InterruptRes,
@@ -60,9 +60,9 @@ class Server:
             await self.harness.interrupt(request.session_id)
             yield InterruptRes(id=request.id)
         except AgentNotRunning:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.AGENT_NOT_RUNNING)
+            yield ErrorRes(id=request.id, message=ErrorMessage.AGENT_NOT_RUNNING)
         except SessionNotFound:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
+            yield ErrorRes(id=request.id, message=ErrorMessage.SESSION_NOT_FOUND)
 
     async def _session_list(self, request: SessionListReq) -> AsyncGenerator[
         ResponseType[SessionListRes],
@@ -79,7 +79,7 @@ class Server:
         if session.session_id:
             yield SessionCreateRes(id=request.id, session_id=session.session_id)
         else:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.INTERNAL_ERROR)
+            yield ErrorRes(id=request.id, message=ErrorMessage.INTERNAL_ERROR)
 
     async def _chat_history(self, request: ChatHistoryReq) -> AsyncGenerator[
         ResponseType[ChatHistoryRes],
@@ -89,14 +89,14 @@ class Server:
             session = await self.session_manager.load_session(request.session_id)
             yield ChatHistoryRes(id=request.id, messages=session.history)
         except SessionNotFound:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
+            yield ErrorRes(id=request.id, message=ErrorMessage.SESSION_NOT_FOUND)
 
     async def _send_message(self, request: SendMessageReq) -> AsyncGenerator[
         ResponseType[SendMessageRes],
         None
     ]:
         if not request.stream:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.STREAM_REQUIRED)
+            yield ErrorRes(id=request.id, message=ErrorMessage.STREAM_REQUIRED)
 
         try:
             last_chunk: MessageUnion | None = None
@@ -113,10 +113,10 @@ class Server:
                 yield build_send_message_response(request_id=request.id, has_more=False, message=last_chunk)
 
         except AgentAlreadyRunning:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.AGENT_RUNNING)
+            yield ErrorRes(id=request.id, message=ErrorMessage.AGENT_RUNNING)
 
         except SessionNotFound:
-            yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
+            yield ErrorRes(id=request.id, message=ErrorMessage.SESSION_NOT_FOUND)
 
         except ExecutionInterrupted:
             return
