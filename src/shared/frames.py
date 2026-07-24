@@ -1,7 +1,9 @@
-from enum import StrEnum
 import json
-from typing import Any, Literal, Optional, Union, Annotated
-from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
+from enum import StrEnum
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, Field, TypeAdapter, model_serializer, model_validator
+
 
 class StatusType(StrEnum):
     IDLE = "idle"
@@ -67,7 +69,7 @@ class InterruptedEvent(Event, frozen=True):
 class ErrorEvent(Event, frozen=True):
     type: Literal[EventType.ERROR] = EventType.ERROR
     message: ErrorMessage
-    details: Optional[Union[list, dict, str]] = None
+    details: list | dict | str | None = None
 
 class StatusEvent(Event, frozen=True):
     type: Literal[EventType.STATUS] = EventType.STATUS
@@ -80,18 +82,12 @@ class InterruptAction(Action, frozen=True):
 
 
 EventUnion = Annotated[
-    Union[
-        ErrorEvent,
-        StatusEvent,
-        InterruptedEvent,
-    ],
+    ErrorEvent | StatusEvent | InterruptedEvent,
     Field(discriminator="type"),
 ]
 
 ActionUnion = Annotated[
-    Union[
-        InterruptAction,
-    ],
+    InterruptAction,
     Field(discriminator="type")
 ]
 
@@ -99,12 +95,12 @@ event_adapter = TypeAdapter(EventUnion)
 action_adapter = TypeAdapter(ActionUnion)
 
 
-def to_event(event_json: Union[str, dict[str, Any]]) -> EventUnion:
+def to_event(event_json: str | dict[str, Any]) -> EventUnion:
     if isinstance(event_json, str):
         event_json = json.loads(event_json)
     return event_adapter.validate_python(event_json)
 
-def to_action(action_json: Union[str, dict[str, Any]]) -> ActionUnion:
+def to_action(action_json: str | dict[str, Any]) -> ActionUnion:
     if isinstance(action_json, str):
         action_json = json.loads(action_json)
     return action_adapter.validate_python(action_json)

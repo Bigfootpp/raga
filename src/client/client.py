@@ -1,9 +1,24 @@
 import asyncio
 import json
-from typing import AsyncGenerator, Literal, Optional, Any, Type, Union, overload
-from collections.abc import Callable, Awaitable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Any, Literal, overload
 
+import websockets
+from pydantic import ValidationError
+from websockets.asyncio.client import ClientConnection, connect
+
+from shared.frames import (
+    Action,
+    ErrorEvent,
+    Event,
+    InterruptAction,
+    InterruptedEvent,
+    StatusEvent,
+    to_event,
+)
 from shared.frames_rpc import (
+    ChatHistoryReq,
+    ChatHistoryRes,
     ErrorMessageRPC,
     ErrorRes,
     FrameType,
@@ -15,23 +30,10 @@ from shared.frames_rpc import (
     SessionCreateRes,
     SessionListReq,
     SessionListRes,
-    ChatHistoryReq,
-    ChatHistoryRes,
-    to_response
+    to_response,
 )
 from shared.messages import AssistantMessage, MessageUnion
-import websockets
-from websockets.asyncio.client import ClientConnection, connect
 
-from shared.frames import (
-    Action,
-    Event,
-    InterruptAction,
-    InterruptedEvent,
-    StatusEvent,
-    ErrorEvent,
-    to_event
-)
 
 class BadServerResponseError(Exception):
     pass
@@ -78,12 +80,12 @@ class Client:
         self.reconnect_delay = 1
         self.connected: bool = False
 
-        self.websocket: Optional[ClientConnection] = None
+        self.websocket: ClientConnection | None = None
         self.transactions: dict[str, asyncio.Queue[ResponseUnion]] = {}
-        self._listen_task: Optional[asyncio.Task] = None
+        self._listen_task: asyncio.Task | None = None
         self._running_connection: bool = False
         self._background_tasks = set()
-        self._handlers: dict[Type[Event], Callable[[Any], Awaitable[None]]] = {
+        self._handlers: dict[type[Event], Callable[[Any], Awaitable[None]]] = {
             StatusEvent: self.handle_status,
             ErrorEvent: self.handle_error,
             InterruptedEvent: self.handle_interrupted,
@@ -107,18 +109,13 @@ class Client:
 
             except asyncio.CancelledError:
                 break
-            except Exception:
-                pass
             finally:
                 if self.websocket:
                     self.connected = False
                     websocket = self.websocket
                     self.websocket = None
-                    try:
-                        if websocket.state == websockets.State.OPEN:
-                            await websocket.close()
-                    except Exception:
-                        pass
+                    if websocket.state == websockets.State.OPEN:
+                        await websocket.close()
                 await self.handle_disconnect()
 
             if self._running_connection:
@@ -128,21 +125,24 @@ class Client:
         if not self.websocket:
             return
 
-        async for message in self.websocket:
-            try:
-                frame_json: dict = json.loads(message)
-                if frame_json.get("type", "") == FrameType.RESPONSE:
-                    response = to_response(frame_json)
-                    res_id = response.id
-                    queue = self.transactions.get(res_id)
-                    if queue:
-                        await queue.put(response)
-                else:
-                    event = to_event(frame_json)
-                    if event:
-                        await self._dispatch(event)
-            except Exception:
-                pass
+        try:
+            async for message in self.websocket:
+                try:
+                    frame_json: dict = json.loads(message)
+                    if frame_json.get("type", "") == FrameType.RESPONSE:
+                        response = to_response(frame_json)
+                        res_id = response.id
+                        queue = self.transactions.get(res_id)
+                        if queue:
+                            await queue.put(response)
+                    else:
+                        event = to_event(frame_json)
+                        if event:
+                            await self._dispatch(event)
+                except (json.JSONDecodeError, ValidationError):
+                    pass
+        except websockets.ConnectionClosedError:
+            pass
 
     async def _dispatch(self, event: Event):
         handler = self._handlers.get(type(event))
@@ -164,7 +164,7 @@ class Client:
     async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
     @overload
     async def send_request(self, request: RequestUnion[Literal[True]]) -> AsyncGenerator[ResponseUnion, None]: ...
-    async def send_request(self, request: RequestUnion[Any]) -> Union[AsyncGenerator[ResponseUnion, None], ResponseUnion]:
+    async def send_request(self, request: RequestUnion[Any]) -> AsyncGenerator[ResponseUnion, None] | ResponseUnion:
         if not self.websocket or not self.websocket.state == websockets.State.OPEN:
             raise ConnectionError("Unable to send the message, the client is not connected.")
 
@@ -234,11 +234,8 @@ class Client:
         self._running_connection = False
 
         if self.websocket:
-            try:
-                if self.websocket.state == websockets.State.OPEN:
-                    await self.websocket.close()
-            except Exception:
-                pass
+            if self.websocket.state == websockets.State.OPEN:
+                await self.websocket.close()
             self.websocket = None
 
         if self._listen_task:

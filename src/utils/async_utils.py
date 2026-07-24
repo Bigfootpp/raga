@@ -1,30 +1,27 @@
 import asyncio
 import functools
-from collections.abc import Coroutine
-from typing import Any, AsyncIterable, AsyncIterator, Callable, TypeVar, ParamSpec
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Coroutine
 
-T = TypeVar("T")
-P = ParamSpec("P")
+_background_tasks: set[asyncio.Task] = set()
 
-_background_tasks: set[asyncio.Task[Any]] = set()
-
-async def aenumerate(
-    async_iterable: AsyncIterable[T], 
+async def aenumerate[T](
+    async_iterable: AsyncIterable[T],
     start: int = 0
 ) -> AsyncIterator[tuple[int, T]]:
     i = start
-    async_iterable_iter = async_iterable
-    async for item in async_iterable_iter:
+    async for item in async_iterable:
         yield i, item
         i += 1
 
-def fire_and_forget(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
+def fire_and_forget[T](coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
 
-def background_task(func: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, asyncio.Task[T]]:
+def background_task[T, **P](
+    func: Callable[P, Coroutine[None, None, T]]
+) -> Callable[P, asyncio.Task[T]]:
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> asyncio.Task[T]:
         coro = func(*args, **kwargs)

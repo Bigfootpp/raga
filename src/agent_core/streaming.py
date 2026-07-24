@@ -1,5 +1,6 @@
 import asyncio
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+
 from shared.messages import AssistantMessage, MessageUnion
 
 MOCK_WAIT_TIME = 0.3
@@ -14,10 +15,10 @@ class Stream:
             (MOCK_THINKING, True),
             (MOCK_RESPONSE, False),
         ):
-            for i, text in enumerate(text.split(" ")):
+            for i, chunk in enumerate(text.split(" ")):
                 await asyncio.sleep(MOCK_WAIT_TIME)
 
-                chunk = text if i == 0 else " " + text
+                chunk = chunk if i == 0 else " " + chunk
 
                 if reasoning:
                     yield AssistantMessage(

@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Optional
 
 from agent_core.database import SessionRepository
 from agent_core.session import Session
+
 
 class SessionNotFound(Exception):
     pass
@@ -45,6 +45,6 @@ class SessionManager:
             await self._repo.update_session_timestamp(session.session_id)
         session.record()
 
-    async def rewind(self, session_id: str, n: int = 1) -> Optional[Session]:
+    async def rewind(self, session_id: str, n: int = 1) -> Session | None:
         await self._repo.rewind_user_messages(session_id, n)
         return await self.load_session(session_id)

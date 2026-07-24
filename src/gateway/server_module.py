@@ -1,23 +1,16 @@
 import asyncio
-from typing import AsyncGenerator, AsyncIterator, Awaitable, Optional
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable
 
-from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
-from agent_core.session_manager import SessionManager, SessionNotFound
-from fastapi import WebSocket
-from gateway.connection_manager import ConnectionManager
-from shared.frames_rpc import (
-    ChatHistoryReq,
-    ChatHistoryRes,
-    ErrorMessageRPC,
-    ErrorRes,
-    ResponseType,
-    SendMessageReq,
-    SendMessageRes,
-    SessionListReq,
-    SessionListRes,
-    SessionCreateReq,
-    SessionCreateRes,
+from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
+
+from agent_core.harness import (
+    AgentAlreadyRunning,
+    AgentNotRunning,
+    ExecutionInterrupted,
+    Harness,
 )
+from agent_core.session_manager import SessionManager, SessionNotFound
+from gateway.connection_manager import ConnectionManager
 from shared.config import config
 from shared.frames import (
     Action,
@@ -29,7 +22,21 @@ from shared.frames import (
     StatusEvent,
     StatusType,
 )
+from shared.frames_rpc import (
+    ChatHistoryReq,
+    ChatHistoryRes,
+    ErrorMessageRPC,
+    ErrorRes,
+    ResponseType,
+    SendMessageReq,
+    SendMessageRes,
+    SessionCreateReq,
+    SessionCreateRes,
+    SessionListReq,
+    SessionListRes,
+)
 from shared.messages import AssistantMessage, MessageUnion
+
 
 def idle_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.IDLE, session_id=session_id)
 def responding_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.RESPONDING, session_id=session_id)
@@ -82,7 +89,7 @@ class Server:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.STREAM_REQUIRED)
 
         try:
-            last_chunk: Optional[MessageUnion] = None
+            last_chunk: MessageUnion | None = None
             async for chunk in self.harness.process_input(request.text, request.session_id):
                 if not isinstance(chunk, AssistantMessage):
                     continue
@@ -119,7 +126,7 @@ class Server:
                     break
         try:
             await ws.close()
-        except Exception:
+        except (WebSocketDisconnect, WebSocketException):
             pass
 
     async def _interrupt(self, action: InterruptAction):

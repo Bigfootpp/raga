@@ -1,22 +1,23 @@
 import asyncio
 import time
-from typing import Optional
 
-from client.client import Client
-from client.tui.widgets import InfoBox, InputRow, MessageHistory, SessionList
-from shared.messages import AssistantMessage, UserMessage
-from agent_core.session import Session
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer
 from textual.css.query import NoMatches
 from textual.events import Key
-from textual.widgets import Input, Static, ListView
+from textual.widgets import Input, ListView, Static
+
+from agent_core.session import Session
+from client.client import Client
+from client.tui.widgets import InfoBox, InputRow, MessageHistory, SessionList
 from shared.frames import (
     ErrorEvent,
     ErrorMessage,
     InterruptedEvent,
     StatusEvent,
 )
+from shared.messages import AssistantMessage, UserMessage
 from utils import async_utils
 
 INTERRUPT_THRESHOLD = 0.5
@@ -25,16 +26,16 @@ INTERRUPT_THRESHOLD = 0.5
 class TUI(Client, App):
     CSS_PATH = "tui.tcss"
 
-    BINDINGS = [
-        ("ctrl+t", "toggle_session_list", "Toggle Sessions"),
-        ("escape", "interrupt_or_close_session_list", "Interrupt/Close"),
-    ]
+    BINDING = (
+        Binding("ctrl+t", "toggle_session_list", "Toggle Sessions"),
+        Binding("escape", "interrupt_or_close_session_list", "Interrupt/Close"),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_response = ""
         self.current_reasoning = ""
-        self.current_session_id: Optional[str] = None
+        self.current_session_id: str | None = None
         self.status_lock = asyncio.Lock()
         self.feedback_lock = asyncio.Lock()
         self.session: Session = Session()
@@ -45,31 +46,31 @@ class TUI(Client, App):
         self.current_response = ""
         self.current_reasoning = ""
 
-    def _get_feedback_banner(self) -> Optional[Static]:
+    def _get_feedback_banner(self) -> Static | None:
         try:
             return self.query_one("#feedback-banner", Static)
         except NoMatches:
             return None
 
-    def _get_status_widget(self) -> Optional[Static]:
+    def _get_status_widget(self) -> Static | None:
         try:
             return self.query_one("#status-metrics", Static)
         except NoMatches:
             return None
 
-    def _get_message_history_widget(self) -> Optional[MessageHistory]:
+    def _get_message_history_widget(self) -> MessageHistory | None:
         try:
             return self.query_one("#message-history", MessageHistory)
         except NoMatches:
             return None
 
-    def _get_scroll_container(self) -> Optional[ScrollableContainer]:
+    def _get_scroll_container(self) -> ScrollableContainer | None:
         try:
             return self.query_one("#main-scroll", ScrollableContainer)
         except NoMatches:
             return None
 
-    def _get_session_list_widget(self) -> Optional[SessionList]:
+    def _get_session_list_widget(self) -> SessionList | None:
         try:
             return self.query_one("#session-list", SessionList)
         except NoMatches:
@@ -175,7 +176,7 @@ class TUI(Client, App):
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         item = event.item
         if item and hasattr(item, 'session_id'):
-            session_id: str = getattr(item, 'session_id')
+            session_id: str | None = getattr(item, "session_id", None)
             if session_id:
                 await self.select_session(session_id)
 
@@ -200,7 +201,7 @@ class TUI(Client, App):
         self.log("Connected")
         self.set_status("connected")
 
-    def upsert_assistant_message(self, *, content: Optional[str] = None, reasoning: Optional[str] = None) -> None:
+    def upsert_assistant_message(self, *, content: str | None = None, reasoning: str | None = None) -> None:
         if content is None and reasoning is None:
             return
 

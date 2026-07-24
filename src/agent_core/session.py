@@ -1,9 +1,11 @@
-from typing import Iterator, Optional, SupportsIndex
+from collections.abc import Iterator
+from typing import SupportsIndex
 
-from shared.messages import MessageUnion, AssistantMessage
+from shared.messages import AssistantMessage, MessageUnion
+
 
 class Session:
-    def __init__(self, session_id: Optional[str] = None):
+    def __init__(self, session_id: str | None = None):
         self.history = []
         self.session_id = session_id
         self._checkpoint: list[MessageUnion] = []

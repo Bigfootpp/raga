@@ -1,7 +1,9 @@
-from enum import StrEnum
 import json
-from typing import Any, Literal, Optional, Union, Annotated
+from enum import StrEnum
+from typing import Annotated, Any, Literal
+
 from pydantic import BaseModel, Field, TypeAdapter
+
 
 class RoleType(StrEnum):
     SYSTEM = "system"
@@ -43,9 +45,9 @@ class UserMessage(Message, frozen=True):
 
 class AssistantMessage(Message, frozen=True):
     role: Literal[RoleType.ASSISTANT] = RoleType.ASSISTANT
-    content: Optional[str] = None
-    reasoning_content: Optional[str] = None
-    tool_calls: Optional[list[ToolCall]] = None
+    content: str | None = None
+    reasoning_content: str | None = None
+    tool_calls: list[ToolCall] | None = None
 
 
 class ToolMessage(Message, frozen=True):
@@ -56,14 +58,14 @@ class ToolMessage(Message, frozen=True):
 
 
 MessageUnion = Annotated[
-    Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage],
+    SystemMessage | UserMessage | AssistantMessage | ToolMessage,
     Field(discriminator="role")
 ]
 
 message_adapter = TypeAdapter(MessageUnion)
 
 
-def to_message(message_json: Union[str, dict[str, Any]]) -> MessageUnion:
+def to_message(message_json: str | dict[str, Any]) -> MessageUnion:
     if isinstance(message_json, str):
         message_json = json.loads(message_json)
     return message_adapter.validate_python(message_json)

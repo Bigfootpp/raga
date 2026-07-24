@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 class Config:
     DIR = Path.home()/".raga"
     DB_PATH = ":memory:"

@@ -1,12 +1,22 @@
 import asyncio
 import json
 import traceback
-from typing import Any, Awaitable, Callable, AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
+from fastapi.websockets import WebSocketState
 from pydantic import ValidationError
+
 from shared.frames import Action, ActionUnion, ErrorEvent, ErrorMessage, to_action
-from shared.frames_rpc import ErrorMessageRPC, ErrorRes, FrameType, RequestUnion, ResponseUnion, to_request
+from shared.frames_rpc import (
+    ErrorMessageRPC,
+    ErrorRes,
+    FrameType,
+    RequestUnion,
+    ResponseUnion,
+    to_request,
+)
 from utils import async_utils
 
 
@@ -37,7 +47,7 @@ class Transaction:
 
             try:
                 await self.ws.send_json(response.to_dict())
-            except WebSocketDisconnect | WebSocketException:
+            except (WebSocketDisconnect, WebSocketException):
                 if not disconnect_ok:
                     raise
             self.open = response.has_more and self.request.stream
@@ -117,7 +127,7 @@ class ConnectionManager:
         async for response in gen:
             try:
                 await transaction.send_response(response, disconnect_ok=True)
-            except TransactionClosedError | TransactionMismatchError as e:
+            except (TransactionClosedError, TransactionMismatchError) as e:
                 try:
                     await gen.athrow(e)
                 except e.__class__:
@@ -130,7 +140,7 @@ class ConnectionManager:
                         ErrorRes(id=request.id, message=ErrorMessageRPC.INTERNAL_ERROR),
                         disconnect_ok=True
                     )
-                except TransactionClosedError | TransactionMismatchError:
+                except (TransactionClosedError, TransactionMismatchError):
                     pass
 
     async def _listen_loop(self, ws: WebSocket):
@@ -150,10 +160,11 @@ class ConnectionManager:
                     break
         self.tasks.pop(ws)
         self.connections.discard(ws)
-        try:
-            await ws.close()
-        except Exception:
-            pass
+        if ws.state == WebSocketState.CONNECTED:
+            try:
+                await ws.close()
+            except (WebSocketDisconnect, WebSocketException):
+                pass
         event = self.events.get(ws)
         if event is not None:
             event.set()

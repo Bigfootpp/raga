@@ -1,9 +1,12 @@
-from enum import StrEnum
 import json
-from typing import Any, Literal, Optional, Union, Annotated, cast
+from enum import StrEnum
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
-from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
+
+from pydantic import BaseModel, Field, TypeAdapter, model_serializer, model_validator
+
 from shared.messages import MessageUnion
+
 
 class ErrorMessageRPC(StrEnum):
     INVALID_FORMAT = "Invalid format"
@@ -47,9 +50,9 @@ class ClientEventType(StrEnum):
 MethodType = ServerMethodType | ClientMethodType
 EventType = ServerEventType | ClientEventType
 
-type bool_type = Literal[True] | Literal[False]
+type BoolType = Literal[True, False]
 
-class Request[StreamType: bool_type](BaseModel, frozen=True):
+class Request[StreamType: BoolType](BaseModel, frozen=True):
     type: Literal[FrameType.REQUEST] = FrameType.REQUEST
     id: str = Field(default_factory=lambda: str(uuid4()))
     method: MethodType
@@ -155,23 +158,23 @@ class Event(BaseModel, frozen=True):
 class ErrorRes(Response, frozen=True):
     method: Literal[ServerMethodType.ERROR] = ServerMethodType.ERROR
     message: ErrorMessageRPC
-    details: Optional[Union[list, dict, str]] = None
+    details: list | dict | str | None = None
 
-class SessionListReq[StreamType: bool_type](Request[StreamType], frozen=True):
+class SessionListReq[StreamType: BoolType](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
 
 class SessionListRes(Response, frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
     sessions: list[str]
 
-class SessionCreateReq[StreamType: bool_type](Request[StreamType], frozen=True):
+class SessionCreateReq[StreamType: BoolType](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.SESSION_CREATE] = ServerMethodType.SESSION_CREATE
 
 class SessionCreateRes(Response, frozen=True):
     method: Literal[ServerMethodType.SESSION_CREATE] = ServerMethodType.SESSION_CREATE
     session_id: str
 
-class ChatHistoryReq[StreamType: bool_type](Request[StreamType], frozen=True):
+class ChatHistoryReq[StreamType: BoolType](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
     session_id: str
 
@@ -179,49 +182,38 @@ class ChatHistoryRes(Response, frozen=True):
     method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
     messages: list[MessageUnion]
 
-class SendMessageReq[StreamType: bool_type](Request[StreamType], frozen=True):
+class SendMessageReq[StreamType: BoolType](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
     text: str
     session_id: str
 
 class SendMessageRes(Response, frozen=True):
     method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
-    reasoning_content: Optional[str]
-    content: Optional[str]
+    reasoning_content: str | None
+    content: str | None
 
 # Client
-type ResponseType[ResType: Response] = Union[ResType, ErrorRes]
+type ResponseType[ResType: Response] = ResType | ErrorRes
 
-type RequestUnion[StreamType: bool_type] = Annotated[
-    Union[
-        SessionListReq[StreamType],
-        SessionCreateReq[StreamType],
-        ChatHistoryReq[StreamType],
-        SendMessageReq[StreamType],
-    ],
+type RequestUnion[StreamType: BoolType] = Annotated[
+    SessionListReq[StreamType] | SessionCreateReq[StreamType] | ChatHistoryReq[StreamType] | SendMessageReq[StreamType],
     Field(discriminator="method")
 ]
 
 ResponseUnion = Annotated[
-    Union[
-        SessionListRes,
-        SessionCreateRes,
-        ChatHistoryRes,
-        SendMessageRes,
-        ErrorRes,
-    ],
+    SessionListRes | SessionCreateRes | ChatHistoryRes | SendMessageRes | ErrorRes,
     Field(discriminator="method")
 ]
 
-request_adapter = TypeAdapter(RequestUnion[bool_type])
+request_adapter = TypeAdapter(RequestUnion[BoolType])
 response_adapter = TypeAdapter(ResponseUnion)
 
-def to_request(req_json: Union[str, dict[str, Any]]) -> RequestUnion[bool_type]:
+def to_request(req_json: str | dict[str, Any]) -> RequestUnion[BoolType]:
     if isinstance(req_json, str):
         req_json = json.loads(req_json)
     return request_adapter.validate_python(req_json)
 
-def to_response(res_json: Union[str, dict[str, Any]]) -> ResponseUnion:
+def to_response(res_json: str | dict[str, Any]) -> ResponseUnion:
     if isinstance(res_json, str):
         res_json = json.loads(res_json)
     return response_adapter.validate_python(res_json)

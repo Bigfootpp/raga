@@ -1,9 +1,10 @@
 import asyncio
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 from agent_core.agent import Agent
 from agent_core.session_manager import SessionManager
 from shared.messages import AssistantMessage, MessageUnion, UserMessage
+
 
 class AgentAlreadyRunning(Exception):
     pass
@@ -18,7 +19,7 @@ class Harness:
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
         self.session_locks: dict[str, asyncio.Lock] = {}
-        self._session_tasks: dict[str, Optional[asyncio.Task]] = {}
+        self._session_tasks: dict[str, asyncio.Task | None] = {}
 
     async def interrupt(self, session_id: str):
         task = self._session_tasks.get(session_id)

@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import aiosqlite
 from aiosqlite import Connection
-from uuid import uuid4
 
 from shared.messages import MessageUnion, message_adapter
 
