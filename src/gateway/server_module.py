@@ -1,7 +1,6 @@
-import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable
+from collections.abc import AsyncGenerator, Awaitable
 
-from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
+from fastapi import WebSocket
 
 from agent_core.harness import (
     AgentAlreadyRunning,
@@ -12,19 +11,13 @@ from agent_core.harness import (
 from agent_core.session_manager import SessionManager, SessionNotFound
 from gateway.connection_manager import ConnectionManager
 from shared.config import config
-from shared.frames import (
-    Action,
-    ErrorEvent,
-    ErrorMessage,
-    Event,
-    InterruptAction,
-    InterruptedEvent,
-)
 from shared.frames_rpc import (
     ChatHistoryReq,
     ChatHistoryRes,
     ErrorMessageRPC,
     ErrorRes,
+    InterruptReq,
+    InterruptRes,
     ResponseType,
     SendMessageReq,
     SendMessageRes,
@@ -41,7 +34,6 @@ def build_send_message_response(request_id: str, has_more: bool, message: Assist
     thought = message.reasoning_content
     return SendMessageRes(id=request_id, has_more=has_more, content=content, reasoning_content=thought)
 
-# TODO: Migrate chat:interrupt to RPC
 class Server:
     def __init__(self, session_manager: SessionManager) -> None:
         connection_manager = ConnectionManager()
@@ -49,36 +41,60 @@ class Server:
         connection_manager.on(SessionCreateReq, self._session_create)
         connection_manager.on(ChatHistoryReq, self._chat_history)
         connection_manager.on(SendMessageReq, self._send_message)
+        connection_manager.on(InterruptReq, self._interrupt_request)
 
         self.harness = Harness(session_manager)
         self.session_manager = session_manager
         self.connection_manager = connection_manager
-        self.task: asyncio.Task = asyncio.create_task(self._listen_loop())
 
     @classmethod
     async def create(cls) -> "Server":
         session_manager = await SessionManager.create(config.DB_PATH)
         return cls(session_manager)
 
-    async def _session_list(self, request: SessionListReq) -> AsyncGenerator[ResponseType[SessionListRes], None]:
+    async def _interrupt_request(self, request: InterruptReq) -> AsyncGenerator[
+        ResponseType[InterruptRes],
+        None
+    ]:
+        try:
+            await self.harness.interrupt(request.session_id)
+            yield InterruptRes(id=request.id)
+        except AgentNotRunning:
+            yield ErrorRes(id=request.id, message=ErrorMessageRPC.AGENT_NOT_RUNNING)
+        except SessionNotFound:
+            yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
+
+    async def _session_list(self, request: SessionListReq) -> AsyncGenerator[
+        ResponseType[SessionListRes],
+        None
+    ]:
         sessions = await self.session_manager.get_session_ids()
         yield SessionListRes(sessions=sessions, id=request.id)
 
-    async def _session_create(self, request: SessionCreateReq) -> AsyncGenerator[ResponseType[SessionCreateRes], None]:
+    async def _session_create(self, request: SessionCreateReq) -> AsyncGenerator[
+        ResponseType[SessionCreateRes],
+        None
+    ]:
         session = await self.session_manager.new_session()
         if session.session_id:
             yield SessionCreateRes(id=request.id, session_id=session.session_id)
         else:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.INTERNAL_ERROR)
 
-    async def _chat_history(self, request: ChatHistoryReq) -> AsyncGenerator[ResponseType[ChatHistoryRes], None]:
+    async def _chat_history(self, request: ChatHistoryReq) -> AsyncGenerator[
+        ResponseType[ChatHistoryRes],
+        None
+    ]:
         try:
             session = await self.session_manager.load_session(request.session_id)
             yield ChatHistoryRes(id=request.id, messages=session.history)
         except SessionNotFound:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.SESSION_NOT_FOUND)
 
-    async def _send_message(self, request: SendMessageReq) -> AsyncGenerator[ResponseType[SendMessageRes], None]:
+    async def _send_message(self, request: SendMessageReq) -> AsyncGenerator[
+        ResponseType[SendMessageRes],
+        None
+    ]:
         if not request.stream:
             yield ErrorRes(id=request.id, message=ErrorMessageRPC.STREAM_REQUIRED)
 
@@ -107,33 +123,3 @@ class Server:
 
     async def connect(self, ws: WebSocket) -> Awaitable[None]:
         return await self.connection_manager.connect(ws=ws)
-
-    async def _listen_loop(self):
-        while True:
-            ws, action = await self.connection_manager.recv_action()
-            try:
-                async for event in self._dispatch(action=action):
-                    await ws.send_json(event.to_dict())
-            except Exception as e:
-                need_break = self.connection_manager.handle_error(e=e, ws=ws)
-                if need_break:
-                    break
-        try:
-            await ws.close()
-        except (WebSocketDisconnect, WebSocketException):
-            pass
-
-    async def _interrupt(self, action: InterruptAction):
-        try:
-            await self.harness.interrupt(action.session_id)
-            yield InterruptedEvent()
-        except AgentNotRunning:
-            yield ErrorEvent(message=ErrorMessage.AGENT_NOT_RUNNING)
-        except SessionNotFound:
-            yield ErrorEvent(message=ErrorMessage.SESSION_NOT_FOUND)
-
-    async def _dispatch(self, action: Action) -> AsyncIterator[Event]:
-        match action:
-            case InterruptAction():
-                async for event in self._interrupt(action):
-                    yield event

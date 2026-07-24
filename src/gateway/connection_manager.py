@@ -1,6 +1,5 @@
 import asyncio
 import json
-import traceback
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 
@@ -8,7 +7,6 @@ from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
 from fastapi.websockets import WebSocketState
 from pydantic import ValidationError
 
-from shared.frames import Action, ActionUnion, ErrorEvent, ErrorMessage, to_action
 from shared.frames_rpc import (
     ErrorMessageRPC,
     ErrorRes,
@@ -57,7 +55,6 @@ class ConnectionManager:
         self.connections: set[WebSocket] = set()
         self.events: dict[WebSocket, asyncio.Event] = {}
         self.tasks: dict[WebSocket, asyncio.Task] = {}
-        self.action_queue: asyncio.Queue[tuple[WebSocket, ActionUnion]] = asyncio.Queue()
         self.handlers: dict[type[RequestUnion], Callable[[Any], AsyncGenerator[ResponseUnion, None]]] = {}
 
     def _resolve_handler(self, request: RequestUnion) -> Callable[[Any], AsyncGenerator[ResponseUnion, None]] | None:
@@ -87,34 +84,6 @@ class ConnectionManager:
         func: Callable[[TRequest], AsyncGenerator[ResponseUnion, None]],
     ):
         self.handlers[request] = func
-
-    async def recv_action(self) -> tuple[WebSocket, Action]:
-        return await self.action_queue.get()
-
-    async def handle_error(self, e: Exception, ws: WebSocket) -> bool:
-        print(f"Error: ({e.__class__.__name__})")
-        unexpected = False
-        need_break = False
-        match e:
-            case ValidationError():
-                try:
-                    await ws.send_json(ErrorEvent(message=ErrorMessage.INVALID_FORMAT, details=e.errors()).to_dict())
-                except Exception:
-                    need_break = True
-            case WebSocketException() | WebSocketDisconnect():
-                need_break = True
-            case asyncio.CancelledError():
-                need_break = True
-            case Exception():
-                unexpected = True
-                try:
-                    await ws.send_json(ErrorEvent(message=ErrorMessage.INTERNAL_ERROR).to_dict())
-                except Exception:
-                    need_break = True
-
-        if unexpected:
-            print(traceback.print_exc())
-        return need_break
 
     @async_utils.background_task
     async def _handle_request(self, transaction: Transaction):
@@ -146,18 +115,28 @@ class ConnectionManager:
     async def _listen_loop(self, ws: WebSocket):
         while True:
             try:
-                frame_json: dict = json.loads(await ws.receive_text())
-                if frame_json.get("type", "") == FrameType.REQUEST:
-                    request: RequestUnion = to_request(frame_json)
-                    transaction = Transaction(ws=ws, request=request)
-                    self._handle_request(transaction=transaction)
-                else:
-                    action: Action = to_action(frame_json)
-                    await self.action_queue.put((ws, action))
-            except Exception as e:
-                need_break = await self.handle_error(e=e, ws=ws)
-                if need_break:
+                data = await ws.receive_text()
+                try:
+                    frame_json: dict = json.loads(data)
+                    if frame_json.get("type", "") == FrameType.REQUEST:
+                        request: RequestUnion = to_request(frame_json)
+                        transaction = Transaction(ws=ws, request=request)
+                        self._handle_request(transaction=transaction)
+                    else:
+                        pass
+                except json.JSONDecodeError:
+                    pass
+                except ValidationError:
+                    frame_json: dict = json.loads(data)
+                    req_id = frame_json.get("id", None)
+                    if req_id:
+                        await ws.send_json(ErrorRes(id=req_id, message=ErrorMessageRPC.INVALID_FORMAT).to_dict())
+                    else:
+                        break
+                except asyncio.CancelledError:
                     break
+            except (WebSocketDisconnect, WebSocketException):
+                break
         self.tasks.pop(ws)
         self.connections.discard(ws)
         if ws.state == WebSocketState.CONNECTED:

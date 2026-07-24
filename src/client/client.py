@@ -1,26 +1,20 @@
 import asyncio
 import json
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from typing import Any, Literal, overload
 
 import websockets
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 
-from shared.frames import (
-    Action,
-    ErrorEvent,
-    Event,
-    InterruptAction,
-    InterruptedEvent,
-    to_event,
-)
 from shared.frames_rpc import (
     ChatHistoryReq,
     ChatHistoryRes,
     ErrorMessageRPC,
     ErrorRes,
     FrameType,
+    InterruptReq,
+    InterruptRes,
     RequestUnion,
     ResponseUnion,
     SendMessageReq,
@@ -46,6 +40,9 @@ class ServerInternalError(Exception):
 class AgentRunningError(Exception):
     pass
 
+class AgentNotRunningError(Exception):
+    pass
+
 class StreamRequiredError(Exception):
     pass
 
@@ -53,6 +50,7 @@ VALIDATION_MAP: dict[ErrorMessageRPC, type[Exception]] = {
     ErrorMessageRPC.SESSION_NOT_FOUND: SessionNotFound,
     ErrorMessageRPC.INTERNAL_ERROR: ServerInternalError,
     ErrorMessageRPC.AGENT_RUNNING: AgentRunningError,
+    ErrorMessageRPC.AGENT_NOT_RUNNING: AgentNotRunningError,
     ErrorMessageRPC.STREAM_REQUIRED: StreamRequiredError,
 }
 
@@ -84,10 +82,6 @@ class Client:
         self._listen_task: asyncio.Task | None = None
         self._running_connection: bool = False
         self._background_tasks = set()
-        self._handlers: dict[type[Event], Callable[[Any], Awaitable[None]]] = {
-            ErrorEvent: self.handle_error,
-            InterruptedEvent: self.handle_interrupted,
-        }
 
     async def connect(self):
         if self._running_connection:
@@ -134,29 +128,11 @@ class Client:
                         if queue:
                             await queue.put(response)
                     else:
-                        event = to_event(frame_json)
-                        if event:
-                            await self._dispatch(event)
+                        pass
                 except (json.JSONDecodeError, ValidationError):
                     pass
         except websockets.ConnectionClosedError:
             pass
-
-    async def _dispatch(self, event: Event):
-        handler = self._handlers.get(type(event))
-        if handler:
-            await handler(event)
-
-    async def send(self, action: Action):
-        if self.websocket and self.websocket.state == websockets.State.OPEN:
-            action_json = json.dumps(action.to_dict())
-            await self.websocket.send(action_json)
-        else:
-            raise ConnectionError("Unable to send the message, the client is not connected.")
-
-    async def interrupt(self, session_id: str):
-        await self.send(InterruptAction(session_id=session_id))
-
 
     @overload
     async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
@@ -201,8 +177,6 @@ class Client:
 
     async def handle_connect(self) -> None: ...
     async def handle_disconnect(self) -> None: ...
-    async def handle_error(self, event: ErrorEvent) -> None: ...
-    async def handle_interrupted(self, event: InterruptedEvent) -> None: ...
 
     async def list_sessions(self) -> list[str]:
         response = await self.send_request(SessionListReq())
@@ -226,6 +200,10 @@ class Client:
                 content=chunk.content,
                 reasoning_content=chunk.reasoning_content
             )
+
+    async def interrupt(self, session_id: str):
+        response = await self.send_request(InterruptReq(session_id=session_id))
+        validate_expected_response(response, InterruptRes)
 
     async def close(self):
         self._running_connection = False

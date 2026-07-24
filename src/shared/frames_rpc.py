@@ -31,7 +31,7 @@ class ServerMethodType(StrEnum):
     SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
     SEND_MESSAGE = "chat:send"
-    # INTERRUPT = "chat:interrupt"
+    INTERRUPT = "chat:interrupt"
     CHAT_HISTORY = "chat:history"
     ERROR = "error"
 
@@ -192,16 +192,32 @@ class SendMessageRes(Response, frozen=True):
     reasoning_content: str | None
     content: str | None
 
+class InterruptReq[StreamType: BoolType](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.INTERRUPT] = ServerMethodType.INTERRUPT
+    session_id: str
+
+class InterruptRes(Response, frozen=True):
+    method: Literal[ServerMethodType.INTERRUPT] = ServerMethodType.INTERRUPT
+
 # Client
 type ResponseType[ResType: Response] = ResType | ErrorRes
 
 type RequestUnion[StreamType: BoolType] = Annotated[
-    SessionListReq[StreamType] | SessionCreateReq[StreamType] | ChatHistoryReq[StreamType] | SendMessageReq[StreamType],
+    SessionListReq[StreamType] |
+    SessionCreateReq[StreamType] |
+    ChatHistoryReq[StreamType] |
+    SendMessageReq[StreamType] |
+    InterruptReq[StreamType],
     Field(discriminator="method")
 ]
 
 ResponseUnion = Annotated[
-    SessionListRes | SessionCreateRes | ChatHistoryRes | SendMessageRes | ErrorRes,
+    SessionListRes |
+    SessionCreateRes |
+    ChatHistoryRes |
+    SendMessageRes |
+    InterruptRes |
+    ErrorRes,
     Field(discriminator="method")
 ]
 
