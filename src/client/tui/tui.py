@@ -1,6 +1,7 @@
 import asyncio
 import time
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer
@@ -219,6 +220,10 @@ class TUI(Client, App):
             return
 
         event.input.value = ""
+        self.process_stream(text)
+
+    @work()
+    async def process_stream(self, text: str):
         try:
             if not self.current_session_id:
                 self.current_session_id = await self.create_session()
