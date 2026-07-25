@@ -95,9 +95,11 @@ class Client:
 
     async def _reconnect_loop(self):
         while self._running_connection:
+            was_connected = False
             try:
                 self.websocket = await connect(self.uri)
                 self.connected = True
+                was_connected = True
 
                 self._call_connect_callback()
                 await self._listen_loop()
@@ -112,7 +114,8 @@ class Client:
                     self.websocket = None
                     if websocket.state == websockets.State.OPEN:
                         await websocket.close()
-                self._call_disconnect_callback()
+                if was_connected:
+                    self._call_disconnect_callback()
 
             if self._running_connection:
                 await asyncio.sleep(self.reconnect_delay)
