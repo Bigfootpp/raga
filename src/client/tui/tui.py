@@ -20,7 +20,7 @@ from utils import async_utils
 INTERRUPT_THRESHOLD = 0.5
 
 
-class TUI(Client, App):
+class TUI(App):
     CSS_PATH = "tui.tcss"
 
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -30,13 +30,14 @@ class TUI(Client, App):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.client = Client()
         self.status_lock = asyncio.Lock()
         self.feedback_lock = asyncio.Lock()
         self.session: Session = Session()
         self.last_escape_time = 0.0
         self._session_list_visible = False
-        self.on_disconnect(self.handle_disconnect)
-        self.on_connect(self.handle_connect)
+        self.client.on_disconnect(self.handle_disconnect)
+        self.client.on_connect(self.handle_connect)
 
     def _get_feedback_banner(self) -> Static | None:
         try:
@@ -123,7 +124,7 @@ class TUI(Client, App):
 
     async def on_mount(self):
         self.set_status("connecting")
-        await self.connect()
+        await self.client.connect()
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="main-scroll"):
@@ -161,7 +162,7 @@ class TUI(Client, App):
     async def interrupt_current_session(self) -> None:
         if self.session.session_id:
             try:
-                await super().interrupt(self.session.session_id)
+                await self.client.interrupt(self.session.session_id)
                 self.session.revert()
                 self.update_history(self.session)
                 self.set_status("interrupted", lock_duration=2)
@@ -176,7 +177,7 @@ class TUI(Client, App):
                 await self.select_session(session_id)
 
     async def load_session(self, session_id: str) -> None:
-        history = await self.load_chat_history(session_id)
+        history = await self.client.load_chat_history(session_id)
         self.session = Session(session_id=session_id)
         self.session.load_history(history)
         self.session.record()
@@ -206,7 +207,7 @@ class TUI(Client, App):
         if not text:
             return
 
-        if not self.connected:
+        if not self.client.connected:
             self.show_feedback("Not connected", duration=2)
             event.input.value = ""
             return
@@ -218,7 +219,7 @@ class TUI(Client, App):
     async def process_stream(self, text: str):
         try:
             if not self.session.session_id:
-                session_id = await self.create_session()
+                session_id = await self.client.create_session()
                 self.session = Session(session_id=session_id)
                 assert self.session.session_id is not None # type check
 
@@ -230,7 +231,7 @@ class TUI(Client, App):
             self.update_history(self.session)
 
             try:
-                async for chunk in self.process_input(self.session.session_id, text):
+                async for chunk in self.client.process_input(self.session.session_id, text):
                     if not isinstance(chunk, AssistantMessage):
                         continue
                     current_response += chunk.content or ""
@@ -251,7 +252,7 @@ class TUI(Client, App):
             self.show_feedback(str(e), duration=2)
 
     async def update_session_list(self):
-        sessions = await self.list_sessions()
+        sessions = await self.client.list_sessions()
         session_list = self._get_session_list_widget()
         if session_list:
             session_list.populate(sessions)

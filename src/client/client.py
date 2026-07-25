@@ -72,8 +72,7 @@ def validate_expected_response[T: ResponseUnion](
     return response
 
 class Client:
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self):
         self.uri = "ws://127.0.0.1:8000/ws"
         self.reconnect_delay = 1
         self.connected: bool = False
