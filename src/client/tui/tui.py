@@ -35,6 +35,8 @@ class TUI(Client, App):
         self.session: Session = Session()
         self.last_escape_time = 0.0
         self._session_list_visible = False
+        self.on_disconnect(self.handle_disconnect)
+        self.on_connect(self.handle_connect)
 
     def _get_feedback_banner(self) -> Static | None:
         try:

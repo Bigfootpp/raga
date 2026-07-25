@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any, Literal, overload
 
 import websockets
@@ -26,6 +26,7 @@ from shared.frames import (
     to_response,
 )
 from shared.messages import AssistantMessage, MessageUnion
+from utils import async_utils
 
 
 class BadServerResponseError(Exception):
@@ -79,28 +80,32 @@ class Client:
 
         self.websocket: ClientConnection | None = None
         self.transactions: dict[str, asyncio.Queue[ResponseUnion]] = {}
+        self._on_disconnect_callback: set[Callable[[], Awaitable[None]]] = set()
+        self._on_connect_callback: set[Callable[[], Awaitable[None]]] = set()
         self._listen_task: asyncio.Task | None = None
         self._running_connection: bool = False
         self._background_tasks = set()
-
     async def connect(self):
         if self._running_connection:
             return
 
         self._running_connection = True
+
         self._listen_task = asyncio.create_task(self._reconnect_loop())
+
 
     async def _reconnect_loop(self):
         while self._running_connection:
             try:
                 self.websocket = await connect(self.uri)
                 self.connected = True
-                await self.handle_connect()
 
+                self._call_connect_callback()
                 await self._listen_loop()
-
             except asyncio.CancelledError:
                 break
+            except Exception:
+                pass
             finally:
                 if self.websocket:
                     self.connected = False
@@ -108,7 +113,7 @@ class Client:
                     self.websocket = None
                     if websocket.state == websockets.State.OPEN:
                         await websocket.close()
-                await self.handle_disconnect()
+                self._call_disconnect_callback()
 
             if self._running_connection:
                 await asyncio.sleep(self.reconnect_delay)
@@ -131,8 +136,27 @@ class Client:
                         pass
                 except (json.JSONDecodeError, ValidationError):
                     pass
-        except websockets.ConnectionClosedError:
+        except websockets.ConnectionClosed:
             pass
+
+    def on_disconnect(self, func: Callable[[], Awaitable[None]]):
+        self._on_disconnect_callback.add(func)
+
+    def on_connect(self, func: Callable[[], Awaitable[None]]):
+        self._on_connect_callback.add(func)
+
+    @async_utils.background_task
+    async def _call_disconnect_callback(self):
+        for callback in self._on_disconnect_callback:
+            await callback()
+
+    @async_utils.background_task
+    async def _call_connect_callback(self):
+        for callback in self._on_connect_callback:
+            try:
+                await callback()
+            except Exception as e:
+                print(e)
 
     @overload
     async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
@@ -173,10 +197,6 @@ class Client:
                 return response
             finally:
                 self.transactions.pop(req_id, None)
-
-
-    async def handle_connect(self) -> None: ...
-    async def handle_disconnect(self) -> None: ...
 
     async def list_sessions(self) -> list[str]:
         response = await self.send_request(SessionListReq())
