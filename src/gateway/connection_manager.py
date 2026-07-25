@@ -126,11 +126,11 @@ class ConnectionManager:
                         pass
                 except json.JSONDecodeError:
                     pass
-                except ValidationError:
+                except ValidationError as e:
                     frame_json: dict = json.loads(data)
                     req_id = frame_json.get("id", None)
                     if req_id:
-                        await ws.send_json(ErrorRes(id=req_id, message=ErrorMessage.INVALID_FORMAT).to_dict())
+                        await ws.send_json(ErrorRes(id=req_id, message=ErrorMessage.INVALID_FORMAT, details=e.errors()).to_dict())
                     else:
                         break
                 except asyncio.CancelledError:
