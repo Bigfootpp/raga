@@ -1,13 +1,16 @@
 import argparse
-from client.tui.tui import TUI
 import sys
+
 import uvicorn
+
+from client.tui.tui import TUI
+
 
 def start_server():
     uvicorn.run(
         "gateway.server:app",
-        host="127.0.0.1", 
-        port=8000, 
+        host="127.0.0.1",
+        port=8000,
         reload=True
     )
 

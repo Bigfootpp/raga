@@ -1,10 +1,10 @@
 import asyncio
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 from agent_core.agent import Agent
-from agent_core.session import Session
 from agent_core.session_manager import SessionManager
-from shared.messages import AssistantMessage, Message, UserMessage
+from shared.messages import AssistantMessage, MessageUnion, UserMessage
+
 
 class AgentAlreadyRunning(Exception):
     pass
@@ -18,37 +18,36 @@ class ExecutionInterrupted(Exception):
 class Harness:
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
-        self.session_locks: dict[Session, asyncio.Lock] = {}
-        self._session_tasks: dict[Session, Optional[asyncio.Task]] = {}
-    
+        self.session_locks: dict[str, asyncio.Lock] = {}
+        self._session_tasks: dict[str, asyncio.Task | None] = {}
+
     async def interrupt(self, session_id: str):
-        session = await self.session_manager.load_session(session_id)
-        task = self._session_tasks.get(session)
+        task = self._session_tasks.get(session_id)
         if task is None or task.done():
             raise AgentNotRunning("Agent is not running")
-        
+
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
 
-    async def process_input(self, input: str, session_id: str) -> AsyncIterator[Message]:
+    async def process_input(self, input: str, session_id: str) -> AsyncIterator[MessageUnion]:
         if not input or not input.strip():
             return
-        
+
         session = await self.session_manager.load_session(session_id)
         agent = Agent(session)
-        lock = self.session_locks.get(session)
+        lock = self.session_locks.get(session_id)
         if lock is None:
             lock = asyncio.Lock()
-            self.session_locks[session] = lock
+            self.session_locks[session_id] = lock
 
         if lock.locked():
             raise AgentAlreadyRunning("Agent is already running")
 
         async with lock:
-            self._session_tasks[session] = asyncio.current_task()
+            self._session_tasks[session_id] = asyncio.current_task()
 
             thinking_chunks: list[str] = []
             final_chunks: list[str] = []
@@ -59,18 +58,17 @@ class Harness:
                 async for chunk in await agent.run():
                     if isinstance(chunk, AssistantMessage):
                         content = chunk.content
-                        thought = chunk.reasoning_content or chunk.reasoning
+                        thought = chunk.reasoning_content
                         if content:
                             final_chunks.append(content)
                         elif thought:
                             thinking_chunks.append(thought)
-                        
-                    yield chunk                
+
+                    yield chunk
 
                 if thinking_chunks or final_chunks:
                     session.add_message(AssistantMessage(
                         reasoning_content="".join(thinking_chunks) if thinking_chunks else None,
-                        reasoning="".join(thinking_chunks) if thinking_chunks else None,
                         content="".join(final_chunks) if final_chunks else None
                     ))
             except asyncio.CancelledError:
@@ -82,5 +80,5 @@ class Harness:
             else:
                 await self.session_manager.persist_turn(session)
             finally:
-                self._session_tasks.pop(session)
-                self.session_locks.pop(session)
+                self._session_tasks.pop(session_id, None)
+                self.session_locks.pop(session_id, None)

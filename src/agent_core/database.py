@@ -1,20 +1,37 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import aiosqlite
 from aiosqlite import Connection
-from uuid import uuid4
 
-from shared.messages import Message, message_adapter
+from shared.messages import MessageUnion, message_adapter
 
+db_cache: dict[Path | str, Connection] = {}
 
-async def _get_db(path: Path) -> Connection:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(path)
+def _normalize_path(path: Path | str) -> Path:
+    return Path(path).resolve()
+
+async def _get_db(path: Path | str) -> Connection:
+    if path == ":memory:":
+        key = path
+    else:
+        key = _normalize_path(path)
+
+    cached_db = db_cache.get(key)
+    if cached_db:
+        return cached_db
+
+    if key != ":memory:":
+        key.parent.mkdir(parents=True, exist_ok=True)
+
+    db = await aiosqlite.connect(key)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode = WAL;")
     await db.execute("PRAGMA foreign_keys = ON;")
+
+    db_cache[key] = db
     return db
 
 
@@ -43,22 +60,22 @@ class DatabaseError(Exception):
     pass
 
 class SessionRepository:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path | str):
         self._path = path
 
     @classmethod
-    async def create(cls, path: Path) -> "SessionRepository":
+    async def create(cls, path: Path | str) -> "SessionRepository":
         db = await _get_db(path)
         await init_db(db)
         return cls(path)
-    
+
     @asynccontextmanager
     async def get_db(self):
         db = await _get_db(self._path)
         try:
             yield db
         finally:
-            await db.close()
+            pass
 
     async def create_session(self, title: str = "New Session") -> str:
         session_id = str(uuid4())
@@ -101,7 +118,7 @@ class SessionRepository:
             await db.commit()
 
 
-    async def load_messages(self, session_id: str) -> list[Message]:
+    async def load_messages(self, session_id: str) -> list[MessageUnion]:
         async with self.get_db() as db:
             cur = await db.execute(
                 "SELECT data FROM messages WHERE session_id = ? ORDER BY id ASC",
@@ -110,7 +127,7 @@ class SessionRepository:
             rows = await cur.fetchall()
             return [message_adapter.validate_json(row["data"]) for row in rows]
 
-    async def append_message(self, session_id: str, message: Message) -> int:
+    async def append_message(self, session_id: str, message: MessageUnion) -> int:
         data_json = message.model_dump_json(exclude_none=True)
 
         async with self.get_db() as db:
@@ -123,14 +140,12 @@ class SessionRepository:
                 return cur.lastrowid
             raise DatabaseError("Failed to insert message into the database")
 
-    async def append_messages_batch(self, session_id: str, messages: list[Message]) -> list[int]:
+    async def append_messages_batch(self, session_id: str, messages: list[MessageUnion]) -> list[int]:
         if not messages:
             return []
-            
+
         ids = []
         async with self.get_db() as db:
-            await db.execute("BEGIN TRANSACTION;")
-            
             try:
                 for m in messages:
                     data_json = m.model_dump_json(exclude_none=True)
@@ -141,15 +156,14 @@ class SessionRepository:
                     if cur.lastrowid is None:
                         raise DatabaseError("Failed to insert message into the database")
                     ids.append(cur.lastrowid)
-                    
+
                 await db.commit()
-                
             except Exception:
                 await db.rollback()
                 raise
-                
+
             return ids
-        
+
     async def rewind_user_messages(self, session_id: str, n: int = 1) -> int:
         async with self.get_db() as db:
             cur = await db.execute(
@@ -163,7 +177,7 @@ class SessionRepository:
             )
             row = await cur.fetchone()
             if not row:
-                return 0 
+                return 0
 
             cutoff_id = row["id"]
 

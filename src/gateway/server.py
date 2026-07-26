@@ -1,12 +1,15 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket
+
 from gateway.server_module import Server
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    connection_manager = await Server.create()
-    app.state.connection_manager = connection_manager
-    
+    server = await Server.create()
+    app.state.server = server
+
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -17,10 +20,9 @@ async def health_check():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    connection_manager: Server = websocket.app.state.connection_manager
-    
+    server: Server = websocket.app.state.server
+
     await websocket.accept()
-    
-    disconnect_event = await connection_manager.connect(websocket)
-    # On attend l'événement de déconnexion
+
+    disconnect_event = await server.connect(websocket)
     await disconnect_event

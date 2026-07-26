@@ -1,52 +1,129 @@
-from enum import StrEnum
 import json
-from typing import Any, Literal, Optional, Union, Annotated
-from pydantic import BaseModel, Field, TypeAdapter, model_validator, model_serializer
-from shared.messages import Message
+from enum import StrEnum
+from typing import Annotated, Any, Literal, cast
+from uuid import uuid4
+
+from pydantic import BaseModel, Field, TypeAdapter, model_serializer, model_validator
+
+from shared.messages import MessageUnion
+
+
+class ErrorMessage(StrEnum):
+    INVALID_FORMAT = "Invalid format"
+    STREAM_REQUIRED = "Request need to be stream"
+    SESSION_NOT_FOUND = "Session doesn't exist"
+    AGENT_RUNNING = "Agent already running"
+    AGENT_NOT_RUNNING = "Agent is not running"
+    INTERNAL_ERROR = "An internal error occurred during processing."
+
+class FrameType(StrEnum):
+    REQUEST = "request"
+    RESPONSE = "response"
+    EVENT = "event"
 
 class StatusType(StrEnum):
     IDLE = "idle"
     RESPONDING = "responding"
     THINKING = "thinking"
 
-class ErrorMessage(StrEnum):
-    INVALID_FORMAT = "Invalid format"
-    SESSION_NOT_FOUND = "Session doesn't exist"
-    AGENT_RUNNING = "Agent already running"
-    AGENT_NOT_RUNNING = "Agent is not running"
-    INTERNAL_ERROR = "An internal error occurred during processing."
-
-class EventType(StrEnum):
-    # SESSION_SUBSCRIBE = "sessions:subscribe"
-    # SESSION_UNSUBSCRIBE = "sessions:unsubscribe"
+# Client -> Server -> Client
+class ServerMethodType(StrEnum):
     SESSION_LIST = "sessions:list"
     SESSION_CREATE = "sessions:create"
-    # SESSION_DELETE = "sessions:delete"
-    RESPONSE = "chat:streaming:response"
-    THOUGHT = "chat:streaming:thought"
-    USER_MESSAGE = "chat:message:user"
-    ASSISTANT_MESSAGE = "chat:message:assistant"
-    THOUGHT_MESSAGE = "chat:message:thought"
-    STATUS = "chat:status"
-    ERROR = "chat:error"
-    INTERRUPTED = "chat:interrupted"
-    CHAT_HISTORY = "chat:history"
-
-class ActionType(StrEnum):
-    # SESSION_SUBSCRIBE = "sessions:subscribe"
-    # SESSION_UNSUBSCRIBE = "sessions:unsubscribe"
-    SESSION_LIST = "sessions:list"
-    SESSION_CREATE = "sessions:create"
-    # SESSION_DELETE = "sessions:delete"
     SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
     CHAT_HISTORY = "chat:history"
 
-FrameType = EventType | ActionType
+class ServerMethodEventType(StrEnum):
+    ERROR = "error"
+    HEARTBEAT = "hearbeat"
 
+# Client -> Server
+class ServerEventType(StrEnum):
+    pass
 
-class Frame(BaseModel, frozen=True):
-    type: FrameType
+MethodType = ServerMethodType
+MethodEventType = ServerMethodEventType
+EventType = ServerEventType
+
+type BoolType = Literal[True, False]
+
+class Request[StreamType: BoolType](BaseModel, frozen=True):
+    type: Literal[FrameType.REQUEST] = FrameType.REQUEST
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    method: MethodType
+    stream: StreamType = cast(StreamType, False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def flatten_param(cls, param: Any) -> Any:
+        if isinstance(param, dict) and "param" in param and isinstance(param["param"], dict):
+            nested_data = param.get("param", {})
+            return {k: v for k, v in param.items() if k != "param"} | nested_data
+        return param
+
+    @model_serializer(mode="wrap")
+    def serialize_nested(self, handler) -> dict[str, Any]:
+        flat_dict: dict = handler(self)
+        msg_type = flat_dict.pop("type")
+        req_id = flat_dict.pop("id")
+        method = flat_dict.pop("method")
+        stream = flat_dict.pop("stream")
+        return {
+            "type": msg_type,
+            "id": req_id,
+            "method": method,
+            "stream": stream,
+            "param": flat_dict
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    def __str__(self) -> str:
+        return self.model_dump_json()
+
+class Response(BaseModel, frozen=True):
+    type: Literal[FrameType.RESPONSE] = FrameType.RESPONSE
+    id: str
+    ok: Literal[True] = True
+    method: MethodType | MethodEventType
+    has_more: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def flatten_payload(cls, payload: Any) -> Any:
+        if isinstance(payload, dict) and "payload" in payload and isinstance(payload["payload"], dict):
+            nested_data = payload.get("payload", {})
+            return {k: v for k, v in payload.items() if k != "payload"} | nested_data
+        return payload
+
+    @model_serializer(mode="wrap")
+    def serialize_nested(self, handler) -> dict[str, Any]:
+        flat_dict: dict = handler(self)
+        msg_type = flat_dict.pop("type")
+        req_id = flat_dict.pop("id")
+        method = flat_dict.pop("method")
+        ok = flat_dict.pop("ok")
+        has_more = flat_dict.pop("has_more")
+        return {
+            "type": msg_type,
+            "id": req_id,
+            "ok": ok,
+            "method": method,
+            "has_more": has_more,
+            "payload": flat_dict,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    def __str__(self) -> str:
+        return self.model_dump_json()
+
+class Event(BaseModel, frozen=True):
+    type: Literal[FrameType.EVENT] = FrameType.EVENT
+    event: EventType
 
     @model_validator(mode="before")
     @classmethod
@@ -60,8 +137,10 @@ class Frame(BaseModel, frozen=True):
     def serialize_nested(self, handler) -> dict[str, Any]:
         flat_dict = handler(self)
         msg_type = flat_dict.pop("type")
+        event = flat_dict.pop("event")
         return {
             "type": msg_type,
+            "event": event,
             "data": flat_dict
         }
 
@@ -71,149 +150,90 @@ class Frame(BaseModel, frozen=True):
     def __str__(self) -> str:
         return self.model_dump_json()
 
+# Server
+class ErrorRes(Response, frozen=True):
+    method: Literal[ServerMethodEventType.ERROR] = ServerMethodEventType.ERROR
+    has_more: Literal[False] = False
+    message: ErrorMessage
+    details: list | dict | str | None = None
 
-class Event(Frame, frozen=True):
-    type: EventType
+class HeartbeatRes(Response, frozen=True):
+    method: Literal[ServerMethodEventType.HEARTBEAT] = ServerMethodEventType.HEARTBEAT
+    has_more: Literal[True] = True
 
+class SessionListReq[StreamType: BoolType](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
 
-class Action(Frame, frozen=True):
-    type: ActionType
-
-
-# SERVER
-# class SessionSubscribeEvent(Event, frozen=True):
-#     type: Literal[EventType.SESSION_SUBSCRIBE] = EventType.SESSION_SUBSCRIBE
-#     session_id: str
-
-# class SessionUnsubscribeEvent(Event, frozen=True):
-#     type: Literal[EventType.SESSION_UNSUBSCRIBE] = EventType.SESSION_UNSUBSCRIBE
-#     session_id: str
-
-class SessionListEvent(Event, frozen=True):
-    type: Literal[EventType.SESSION_LIST] = EventType.SESSION_LIST
+class SessionListRes(Response, frozen=True):
+    method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
     sessions: list[str]
 
-class SessionCreateEvent(Event, frozen=True):
-    type: Literal[EventType.SESSION_CREATE] = EventType.SESSION_CREATE
+class SessionCreateReq[StreamType: BoolType](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.SESSION_CREATE] = ServerMethodType.SESSION_CREATE
+
+class SessionCreateRes(Response, frozen=True):
+    method: Literal[ServerMethodType.SESSION_CREATE] = ServerMethodType.SESSION_CREATE
     session_id: str
 
-# class SessionDeleteEvent(Event, frozen=True):
-#     type: Literal[EventType.SESSION_DELETE] = EventType.SESSION_DELETE
-#     session_id: str
-
-class ChatHistoryEvent(Event, frozen=True):
-    type: Literal[EventType.CHAT_HISTORY] = EventType.CHAT_HISTORY
-    messages: list[Message]
-
-class InterruptedEvent(Event, frozen=True):
-    type: Literal[EventType.INTERRUPTED] = EventType.INTERRUPTED
-
-class ErrorEvent(Event, frozen=True):
-    type: Literal[EventType.ERROR] = EventType.ERROR
-    message: ErrorMessage
-    details: Optional[Union[list, dict, str]] = None
-
-class StatusEvent(Event, frozen=True):
-    type: Literal[EventType.STATUS] = EventType.STATUS
+class ChatHistoryReq[StreamType: BoolType](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
     session_id: str
-    state: StatusType
 
-class UserMessageEvent(Event, frozen=True):
-    type: Literal[EventType.USER_MESSAGE] = EventType.USER_MESSAGE
-    session_id: str
+class ChatHistoryRes(Response, frozen=True):
+    method: Literal[ServerMethodType.CHAT_HISTORY] = ServerMethodType.CHAT_HISTORY
+    messages: list[MessageUnion]
+
+class SendMessageReq[StreamType: BoolType](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
     text: str
-
-class AssistantMessageEvent(Event, frozen=True):
-    type: Literal[EventType.ASSISTANT_MESSAGE] = EventType.ASSISTANT_MESSAGE
-    session_id: str
-    text: str
-
-class ThoughtMessageEvent(Event, frozen=True):
-    type: Literal[EventType.THOUGHT_MESSAGE] = EventType.THOUGHT_MESSAGE
-    session_id: str
-    text: str
-
-class ResponseChunkEvent(Event, frozen=True):
-    type: Literal[EventType.RESPONSE] = EventType.RESPONSE
-    session_id: str
-    chunk: str
-
-class ThoughtChunkEvent(Event, frozen=True):
-    type: Literal[EventType.THOUGHT] = EventType.THOUGHT
-    session_id: str
-    chunk: str
-
-
-# CLIENT
-# class SessionSubscribeAction(Action, frozen=True):
-#     type: Literal[ActionType.SESSION_SUBSCRIBE] = ActionType.SESSION_SUBSCRIBE
-#     session_id: str
-
-# class SessionUnsubscribeAction(Action, frozen=True):
-#     type: Literal[ActionType.SESSION_UNSUBSCRIBE] = ActionType.SESSION_UNSUBSCRIBE
-#     session_id: str
-
-class SessionListAction(Action, frozen=True):
-    type: Literal[ActionType.SESSION_LIST] = ActionType.SESSION_LIST
-
-class SessionCreateAction(Action, frozen=True):
-    type: Literal[ActionType.SESSION_CREATE] = ActionType.SESSION_CREATE
-
-# class SessionDeleteAction(Action, frozen=True):
-#     type: Literal[ActionType.SESSION_DELETE] = ActionType.SESSION_DELETE
-
-class SendMessageAction(Action, frozen=True):
-    type: Literal[ActionType.SEND_MESSAGE] = ActionType.SEND_MESSAGE
-    session_id: str
-    text: str
-
-class InterruptAction(Action, frozen=True):
-    type: Literal[ActionType.INTERRUPT] = ActionType.INTERRUPT
     session_id: str
 
-class ChatHistoryAction(Action, frozen=True):
-    type: Literal[ActionType.CHAT_HISTORY] = ActionType.CHAT_HISTORY
+class SendMessageRes(Response, frozen=True):
+    method: Literal[ServerMethodType.SEND_MESSAGE] = ServerMethodType.SEND_MESSAGE
+    reasoning_content: str | None
+    content: str | None
+
+class InterruptReq[StreamType: BoolType](Request[StreamType], frozen=True):
+    method: Literal[ServerMethodType.INTERRUPT] = ServerMethodType.INTERRUPT
     session_id: str
 
+class InterruptRes(Response, frozen=True):
+    method: Literal[ServerMethodType.INTERRUPT] = ServerMethodType.INTERRUPT
 
-EventUnion = Annotated[
-    Union[
-        ErrorEvent,
-        StatusEvent,
-        ResponseChunkEvent,
-        ThoughtChunkEvent,
-        UserMessageEvent,
-        AssistantMessageEvent,
-        ThoughtMessageEvent,
-        InterruptedEvent,
-        SessionListEvent,
-        SessionCreateEvent,
-        ChatHistoryEvent,
-    ],
-    Field(discriminator="type"),
+# Client
+type ResponseType[ResType: Response] = ResType | ErrorRes | HeartbeatRes
+
+type RequestUnion[StreamType: BoolType] = Annotated[
+    SessionListReq[StreamType] |
+    SessionCreateReq[StreamType] |
+    ChatHistoryReq[StreamType] |
+    SendMessageReq[StreamType] |
+    InterruptReq[StreamType],
+    Field(discriminator="method")
 ]
 
-ActionUnion = Annotated[
-    Union[
-        SendMessageAction,
-        InterruptAction,
-        SessionListAction,
-        SessionCreateAction,
-        ChatHistoryAction
-    ],
-    Field(discriminator="type")
+ResponseUnion = Annotated[
+    SessionListRes |
+    SessionCreateRes |
+    ChatHistoryRes |
+    SendMessageRes |
+    InterruptRes |
+
+    # Method Event
+    HeartbeatRes |
+    ErrorRes,
+    Field(discriminator="method")
 ]
 
-event_adapter = TypeAdapter(EventUnion)
-action_adapter = TypeAdapter(ActionUnion)
+request_adapter = TypeAdapter(RequestUnion[BoolType])
+response_adapter = TypeAdapter(ResponseUnion)
 
+def to_request(req_json: str | dict[str, Any]) -> RequestUnion[BoolType]:
+    if isinstance(req_json, str):
+        req_json = json.loads(req_json)
+    return request_adapter.validate_python(req_json)
 
-def to_event(event_json: Union[str, dict[str, Any]]) -> EventUnion:
-    if isinstance(event_json, str):
-        event_json = json.loads(event_json)
-    return event_adapter.validate_python(event_json)
-
-def to_action(action_json: Union[str, dict[str, Any]]) -> ActionUnion:
-    if isinstance(action_json, str):
-        action_json = json.loads(action_json)
-    return action_adapter.validate_python(action_json)
+def to_response(res_json: str | dict[str, Any]) -> ResponseUnion:
+    if isinstance(res_json, str):
+        res_json = json.loads(res_json)
+    return response_adapter.validate_python(res_json)

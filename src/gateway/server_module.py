@@ -1,219 +1,125 @@
-import asyncio
-import traceback
-from typing import AsyncIterator, Awaitable
+from collections.abc import AsyncGenerator, Awaitable
 
-from agent_core.harness import AgentAlreadyRunning, AgentNotRunning, ExecutionInterrupted, Harness
+from fastapi import WebSocket
+
+from agent_core.harness import (
+    AgentAlreadyRunning,
+    AgentNotRunning,
+    ExecutionInterrupted,
+    Harness,
+)
 from agent_core.session_manager import SessionManager, SessionNotFound
-from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
-from pydantic import ValidationError
-from utils import async_utils
-from utils.async_utils import aenumerate
+from gateway.connection_manager import ConnectionManager
 from shared.config import config
 from shared.frames import (
-    Action,
-    AssistantMessageEvent,
-    ChatHistoryAction,
-    ChatHistoryEvent,
-    ErrorEvent,
+    ChatHistoryReq,
+    ChatHistoryRes,
     ErrorMessage,
-    Event,
-    InterruptAction,
-    InterruptedEvent,
-    SendMessageAction,
-    SessionCreateAction,
-    SessionCreateEvent,
-    # SessionDeleteAction,
-    SessionListAction,
-    SessionListEvent,
-    # SessionSubscribeAction,
-    # SessionUnsubscribeAction,
-    StatusEvent,
-    ResponseChunkEvent,
-    ThoughtChunkEvent,
-    StatusType,
-    ThoughtMessageEvent,
-    UserMessageEvent,
-    to_action,
+    ErrorRes,
+    InterruptReq,
+    InterruptRes,
+    ResponseType,
+    SendMessageReq,
+    SendMessageRes,
+    SessionCreateReq,
+    SessionCreateRes,
+    SessionListReq,
+    SessionListRes,
 )
-from shared.messages import AssistantMessage
+from shared.messages import AssistantMessage, MessageUnion
 
-def idle_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.IDLE, session_id=session_id)
-def responding_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.RESPONDING, session_id=session_id)
-def thinking_status(session_id: str) -> StatusEvent: return StatusEvent(state=StatusType.THINKING, session_id=session_id)
+
+def build_send_message_response(request_id: str, has_more: bool, message: AssistantMessage) -> SendMessageRes:
+    content = message.content
+    thought = message.reasoning_content
+    return SendMessageRes(id=request_id, has_more=has_more, content=content, reasoning_content=thought)
 
 class Server:
     def __init__(self, session_manager: SessionManager) -> None:
+        connection_manager = ConnectionManager()
+        connection_manager.on(SessionListReq, self._session_list)
+        connection_manager.on(SessionCreateReq, self._session_create)
+        connection_manager.on(ChatHistoryReq, self._chat_history)
+        connection_manager.on(SendMessageReq, self._send_message)
+        connection_manager.on(InterruptReq, self._interrupt_request)
+
         self.harness = Harness(session_manager)
         self.session_manager = session_manager
-        self.connections: set[WebSocket] = set()
-        self.events: dict[WebSocket, asyncio.Event] = {}
-        self.tasks: dict[WebSocket, asyncio.Task] = {}
-    
+        self.connection_manager = connection_manager
+
     @classmethod
     async def create(cls) -> "Server":
         session_manager = await SessionManager.create(config.DB_PATH)
         return cls(session_manager)
 
-    async def connect(self, ws: WebSocket) -> Awaitable[None]:
-        self.connections.add(ws)
-        task = asyncio.create_task(self._listen_loop(ws=ws))
-        self.tasks[ws] = task
-        self.events[ws] = asyncio.Event()
-        return self.disconnected(ws=ws)
-    
-    async def disconnected(self, ws: WebSocket):
-        event = self.events.get(ws)
-        if event is None:
-            return
-        
-        await event.wait()
-        self.events.pop(ws)
-    
-    async def _handle_error(self, e: Exception, ws: WebSocket) -> bool:
-        print(f"Error: ({e.__class__.__name__})")
-        print(traceback.print_exc())
-        match e:
-            case ValidationError():
-                try:
-                    await ws.send_json(ErrorEvent(message=ErrorMessage.INVALID_FORMAT, details=e.errors()).to_dict())
-                except Exception:
-                    return True
-                return False
-            case WebSocketException() | WebSocketDisconnect():
-                return True
-            case asyncio.CancelledError():
-                return True
-            case Exception():
-                try:
-                    await ws.send_json(ErrorEvent(message=ErrorMessage.INTERNAL_ERROR).to_dict())
-                except Exception:
-                    return True
-                return False
-    
-    @async_utils.background_task
-    async def _handle(self, ws: WebSocket, action_json: str):
+    async def _interrupt_request(self, request: InterruptReq) -> AsyncGenerator[
+        ResponseType[InterruptRes],
+        None
+    ]:
         try:
-            action: Action = to_action(action_json)
-
-            async for event in self._dispatch(action=action):
-                await ws.send_json(event.to_dict())
-        except Exception as e:
-            await self._handle_error(e=e, ws=ws)
-            return
-
-    async def _listen_loop(self, ws: WebSocket):
-        while True:
-            try:
-                action: str = await ws.receive_text()
-                self._handle(ws=ws, action_json=action)
-            except Exception as e:
-                need_break = self._handle_error(e=e, ws=ws)
-                if need_break:
-                    break
-        self.tasks.pop(ws)
-        self.connections.remove(ws)
-        try:
-            await ws.close()
-        except Exception:
-            pass
-        event = self.events.get(ws)
-        if event is not None:
-            event.set()
-    
-    async def _interrupt(self, action: InterruptAction):
-        try:
-            await self.harness.interrupt(action.session_id)
-            yield InterruptedEvent()
-            yield idle_status(action.session_id)
+            await self.harness.interrupt(request.session_id)
+            yield InterruptRes(id=request.id)
         except AgentNotRunning:
-            yield ErrorEvent(message=ErrorMessage.AGENT_NOT_RUNNING)
+            yield ErrorRes(id=request.id, message=ErrorMessage.AGENT_NOT_RUNNING)
         except SessionNotFound:
-            yield ErrorEvent(message=ErrorMessage.SESSION_NOT_FOUND)
-    
-    async def _send_message(self, action: SendMessageAction) -> AsyncIterator[Event]:
-        thought_chunks: list[str] = []
-        final_chunks: list[str] = []
+            yield ErrorRes(id=request.id, message=ErrorMessage.SESSION_NOT_FOUND)
 
-        last_yielded_status = idle_status(action.session_id)
-        final_response_started = False
+    async def _session_list(self, request: SessionListReq) -> AsyncGenerator[
+        ResponseType[SessionListRes],
+        None
+    ]:
+        sessions = await self.session_manager.get_session_ids()
+        yield SessionListRes(sessions=sessions, id=request.id)
+
+    async def _session_create(self, request: SessionCreateReq) -> AsyncGenerator[
+        ResponseType[SessionCreateRes],
+        None
+    ]:
+        session = await self.session_manager.new_session()
+        if session.session_id:
+            yield SessionCreateRes(id=request.id, session_id=session.session_id)
+        else:
+            yield ErrorRes(id=request.id, message=ErrorMessage.INTERNAL_ERROR)
+
+    async def _chat_history(self, request: ChatHistoryReq) -> AsyncGenerator[
+        ResponseType[ChatHistoryRes],
+        None
+    ]:
+        try:
+            session = await self.session_manager.load_session(request.session_id)
+            yield ChatHistoryRes(id=request.id, messages=session.history)
+        except SessionNotFound:
+            yield ErrorRes(id=request.id, message=ErrorMessage.SESSION_NOT_FOUND)
+
+    async def _send_message(self, request: SendMessageReq) -> AsyncGenerator[
+        ResponseType[SendMessageRes],
+        None
+    ]:
+        if not request.stream:
+            yield ErrorRes(id=request.id, message=ErrorMessage.STREAM_REQUIRED)
 
         try:
-            async for i, message in aenumerate(self.harness.process_input(action.text, action.session_id)):
-                if i == 0:
-                    yield UserMessageEvent(text=action.text, session_id=action.session_id)
-
-                if not isinstance(message, AssistantMessage):
+            last_chunk: MessageUnion | None = None
+            async for chunk in self.harness.process_input(request.text, request.session_id):
+                if not isinstance(chunk, AssistantMessage):
                     continue
 
-                content = message.content
-                thought = message.reasoning_content or message.reasoning
+                if last_chunk:
+                    yield build_send_message_response(request_id=request.id, has_more=True, message=last_chunk)
 
-                if thought:
-                    if last_yielded_status != thinking_status(action.session_id):
-                        last_yielded_status = thinking_status(action.session_id)
-                        yield last_yielded_status
+                last_chunk = chunk
 
-                    thought_chunks.append(thought)
-                    yield ThoughtChunkEvent(session_id=action.session_id, chunk=thought)
-                    continue
+            if last_chunk:
+                yield build_send_message_response(request_id=request.id, has_more=False, message=last_chunk)
 
-                if content:
-                    if not final_response_started and thought_chunks:
-                        yield ThoughtMessageEvent(text="".join(thought_chunks), session_id=action.session_id)
-                        thought_chunks.clear()
-
-                    if last_yielded_status != responding_status(action.session_id):
-                        last_yielded_status = responding_status(action.session_id)
-                        yield last_yielded_status
-
-                    final_response_started = True
-                    final_chunks.append(content)
-                    yield ResponseChunkEvent(session_id=action.session_id, chunk=content)
         except AgentAlreadyRunning:
-            yield ErrorEvent(message=ErrorMessage.AGENT_RUNNING)
-            return
+            yield ErrorRes(id=request.id, message=ErrorMessage.AGENT_RUNNING)
+
+        except SessionNotFound:
+            yield ErrorRes(id=request.id, message=ErrorMessage.SESSION_NOT_FOUND)
 
         except ExecutionInterrupted:
             return
 
-        yield AssistantMessageEvent(text="".join(final_chunks), session_id=action.session_id)
-        yield idle_status(action.session_id)
-    
-    async def _session_list(self):
-        sessions = await self.session_manager.get_session_ids()
-        return SessionListEvent(sessions=sessions)
-    
-    async def _session_create(self):
-        session = await self.session_manager.new_session()
-        if session.session_id:
-            return SessionCreateEvent(session_id=session.session_id)
-        else:
-            return ErrorEvent(message=ErrorMessage.INTERNAL_ERROR)
-    
-    async def _chat_history(self, action: ChatHistoryAction):
-        try:
-            session = await self.session_manager.load_session(action.session_id)
-            return ChatHistoryEvent(messages=session.history)
-        except SessionNotFound:
-            return ErrorEvent(message=ErrorMessage.SESSION_NOT_FOUND)
-
-    async def _dispatch(self, action: Action) -> AsyncIterator[Event]:
-        match action:
-            # case SessionSubscribeAction():
-            #     pass
-            # case SessionUnsubscribeAction():
-            #     pass
-            case SessionListAction():
-                yield await self._session_list()
-            case SessionCreateAction():
-                yield await self._session_create()
-            # case SessionDeleteAction():
-            #     pass
-            case SendMessageAction():
-                async for event in self._send_message(action):
-                    yield event
-            case InterruptAction():
-                async for event in self._interrupt(action):
-                    yield event
-            case ChatHistoryAction():
-                yield await self._chat_history(action)
+    async def connect(self, ws: WebSocket) -> Awaitable[None]:
+        return await self.connection_manager.connect(ws=ws)

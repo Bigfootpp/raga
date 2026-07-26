@@ -1,25 +1,26 @@
-from shared.messages import AssistantMessage, UserMessage
-from agent_core.session import Session
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Input, Label, Static, ListView, ListItem
+from textual.widgets import Input, Label, ListItem, ListView, Static
+
+from agent_core.session import Session
+from shared.messages import AssistantMessage, UserMessage
 
 LOGO = r"""
-                 .                      
-                 )@@B                   
-          +U'    .8%x      .'           
-         p@@B^. ..)d" .  1B$@.          
-          .;^MWBI. 0  |%_#-W^           
-            ]w]U'  m . &:@.             
-         ' "L'  /|.@ W'  .%  ..         
-     .B$@d.0_:^.:(@@$l^.'la: B@@?       
-      ]BB` /n    z#%('.  .@  r%o        
-            B` -c  0 .%  O\             
-            'h0    Z    %^  .           
-         !BB%  <@%a#&@a  'BBd           
-         "BB%      O.    ~8@%           
-                 ]@@8                   
-                  BBq                                                                              
+                 .
+                 )@@B
+          +U'    .8%x      .'
+         p@@B^. ..)d" .  1B$@.
+          .;^MWBI. 0  |%_#-W^
+            ]w]U'  m . &:@.
+         ' "L'  /|.@ W'  .%  ..
+     .B$@d.0_:^.:(@@$l^.'la: B@@?
+      ]BB` /n    z#%('.  .@  r%o
+            B` -c  0 .%  O\
+            'h0    Z    %^  .
+         !BB%  <@%a#&@a  'BBd
+         "BB%      O.    ~8@%
+                 ]@@8
+                  BBq
 """
 
 
@@ -96,9 +97,11 @@ class SessionList(Container):
 
     def get_selected_session_id(self) -> str | None:
         list_view = self.query_one("#session-list-view", ListView)
-        if list_view.highlighted_child:
-            if hasattr(list_view.highlighted_child, "session_id"):
-                return getattr(list_view.highlighted_child, "session_id")
+        highlighted_child = list_view.highlighted_child
+        if highlighted_child:
+            session_id = getattr(highlighted_child, "session_id", None)
+            if session_id is not None:
+                return session_id
         return None
 
     def show_list(self) -> None:
@@ -128,7 +131,7 @@ class MessageHistory(Container):
                     self.mount(UserMessageContainer(message.content))
                 case AssistantMessage():
                     content = message.content
-                    reasoning = message.reasoning or message.reasoning_content
+                    reasoning = message.reasoning_content
                     if reasoning:
                         self.mount(ThinkingMessageContainer(reasoning))
                     if content:
