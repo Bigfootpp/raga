@@ -11,6 +11,7 @@ from shared.frames import (
     ErrorMessage,
     ErrorRes,
     FrameType,
+    HeartbeatRes,
     RequestUnion,
     ResponseUnion,
     to_request,
@@ -21,8 +22,10 @@ from utils import async_utils
 class TransactionClosedError(Exception):
     pass
 
+
 class TransactionMismatchError(Exception):
     pass
+
 
 class Transaction:
     def __init__(self, ws: WebSocket, request: RequestUnion) -> None:
@@ -32,6 +35,7 @@ class Transaction:
         self.request = request
         self.stream = request.stream
         self.lock = asyncio.Lock()
+        self.last_response_time: float = asyncio.get_running_loop().time()
 
     def get_request(self):
         return self.request
@@ -48,7 +52,12 @@ class Transaction:
             except (WebSocketDisconnect, WebSocketException):
                 if not disconnect_ok:
                     raise
-            self.open = response.has_more and self.request.stream
+
+            self.last_response_time = asyncio.get_running_loop().time()
+
+            if not isinstance(response, HeartbeatRes):
+                self.open = response.has_more and self.request.stream
+
 
 class ConnectionManager:
     def __init__(self):
@@ -56,12 +65,6 @@ class ConnectionManager:
         self.events: dict[WebSocket, asyncio.Event] = {}
         self.tasks: dict[WebSocket, asyncio.Task] = {}
         self.handlers: dict[type[RequestUnion], Callable[[Any], AsyncGenerator[ResponseUnion, None]]] = {}
-
-    def _resolve_handler(self, request: RequestUnion) -> Callable[[Any], AsyncGenerator[ResponseUnion, None]] | None:
-        for request_type, handler in self.handlers.items():
-            if isinstance(request, request_type):
-                return handler
-        return None
 
     async def connect(self, ws: WebSocket) -> Awaitable[None]:
         self.connections.add(ws)
@@ -85,32 +88,65 @@ class ConnectionManager:
     ):
         self.handlers[request] = func
 
+    async def _heartbeat_loop(self, transaction: Transaction):
+        loop = asyncio.get_running_loop()
+        try:
+            while transaction.open:
+                await asyncio.sleep(1.0)
+                now = loop.time()
+                if now - transaction.last_response_time >= 1.0:
+                    try:
+                        await transaction.send_response(
+                            HeartbeatRes(id=transaction.request.id, has_more=True),
+                            disconnect_ok=True,
+                        )
+                    except (TransactionClosedError, TransactionMismatchError):
+                        break
+        except asyncio.CancelledError:
+            pass
+
+    def _resolve_handler(self, request: RequestUnion) -> Callable[[Any], AsyncGenerator[ResponseUnion, None]] | None:
+        for request_type, handler in self.handlers.items():
+            if isinstance(request, request_type):
+                return handler
+        return None
+
     @async_utils.background_task
     async def _handle_request(self, transaction: Transaction):
         request = transaction.get_request()
         handler = self._resolve_handler(request)
         if not handler:
             return
-        gen = handler(request)
 
-        async for response in gen:
+        heartbeat_task = asyncio.create_task(self._heartbeat_loop(transaction))
+
+        try:
+            gen = handler(request)
+
+            async for response in gen:
+                try:
+                    await transaction.send_response(response, disconnect_ok=True)
+                except (TransactionClosedError, TransactionMismatchError) as e:
+                    try:
+                        await gen.athrow(e)
+                    except e.__class__:
+                        pass
+                    finally:
+                        await gen.aclose()
+                except Exception:
+                    try:
+                        await transaction.send_response(
+                            ErrorRes(id=request.id, message=ErrorMessage.INTERNAL_ERROR),
+                            disconnect_ok=True,
+                        )
+                    except (TransactionClosedError, TransactionMismatchError):
+                        pass
+        finally:
+            heartbeat_task.cancel()
             try:
-                await transaction.send_response(response, disconnect_ok=True)
-            except (TransactionClosedError, TransactionMismatchError) as e:
-                try:
-                    await gen.athrow(e)
-                except e.__class__:
-                    pass
-                finally:
-                    await gen.aclose()
-            except Exception:
-                try:
-                    await transaction.send_response(
-                        ErrorRes(id=request.id, message=ErrorMessage.INTERNAL_ERROR),
-                        disconnect_ok=True
-                    )
-                except (TransactionClosedError, TransactionMismatchError):
-                    pass
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
     async def _listen_loop(self, ws: WebSocket):
         while True:
@@ -130,7 +166,13 @@ class ConnectionManager:
                     frame_json: dict = json.loads(data)
                     req_id = frame_json.get("id", None)
                     if req_id:
-                        await ws.send_json(ErrorRes(id=req_id, message=ErrorMessage.INVALID_FORMAT, details=e.errors()).to_dict())
+                        await ws.send_json(
+                            ErrorRes(
+                                id=req_id,
+                                message=ErrorMessage.INVALID_FORMAT,
+                                details=e.errors(),
+                            ).to_dict()
+                        )
                     else:
                         break
                 except asyncio.CancelledError:

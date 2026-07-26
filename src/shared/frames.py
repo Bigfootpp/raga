@@ -33,22 +33,18 @@ class ServerMethodType(StrEnum):
     SEND_MESSAGE = "chat:send"
     INTERRUPT = "chat:interrupt"
     CHAT_HISTORY = "chat:history"
+
+class ServerMethodEventType(StrEnum):
     ERROR = "error"
+    HEARTBEAT = "hearbeat"
 
 # Client -> Server
 class ServerEventType(StrEnum):
     pass
 
-# Server -> Client -> Server
-class ClientMethodType(StrEnum):
-    pass
-
-# Server -> Client
-class ClientEventType(StrEnum):
-    pass
-
-MethodType = ServerMethodType | ClientMethodType
-EventType = ServerEventType | ClientEventType
+MethodType = ServerMethodType
+MethodEventType = ServerMethodEventType
+EventType = ServerEventType
 
 type BoolType = Literal[True, False]
 
@@ -91,7 +87,7 @@ class Response(BaseModel, frozen=True):
     type: Literal[FrameType.RESPONSE] = FrameType.RESPONSE
     id: str
     ok: Literal[True] = True
-    method: MethodType
+    method: MethodType | MethodEventType
     has_more: bool = False
 
     @model_validator(mode="before")
@@ -156,9 +152,14 @@ class Event(BaseModel, frozen=True):
 
 # Server
 class ErrorRes(Response, frozen=True):
-    method: Literal[ServerMethodType.ERROR] = ServerMethodType.ERROR
+    method: Literal[ServerMethodEventType.ERROR] = ServerMethodEventType.ERROR
+    has_more: Literal[False] = False
     message: ErrorMessage
     details: list | dict | str | None = None
+
+class HeartbeatRes(Response, frozen=True):
+    method: Literal[ServerMethodEventType.HEARTBEAT] = ServerMethodEventType.HEARTBEAT
+    has_more: Literal[True] = True
 
 class SessionListReq[StreamType: BoolType](Request[StreamType], frozen=True):
     method: Literal[ServerMethodType.SESSION_LIST] = ServerMethodType.SESSION_LIST
@@ -200,7 +201,7 @@ class InterruptRes(Response, frozen=True):
     method: Literal[ServerMethodType.INTERRUPT] = ServerMethodType.INTERRUPT
 
 # Client
-type ResponseType[ResType: Response] = ResType | ErrorRes
+type ResponseType[ResType: Response] = ResType | ErrorRes | HeartbeatRes
 
 type RequestUnion[StreamType: BoolType] = Annotated[
     SessionListReq[StreamType] |
@@ -217,6 +218,9 @@ ResponseUnion = Annotated[
     ChatHistoryRes |
     SendMessageRes |
     InterruptRes |
+
+    # Method Event
+    HeartbeatRes |
     ErrorRes,
     Field(discriminator="method")
 ]

@@ -7,12 +7,14 @@ import websockets
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 
+from shared.config import config
 from shared.frames import (
     ChatHistoryReq,
     ChatHistoryRes,
     ErrorMessage,
     ErrorRes,
     FrameType,
+    HeartbeatRes,
     InterruptReq,
     InterruptRes,
     RequestUnion,
@@ -161,10 +163,10 @@ class Client:
                 print(e)
 
     @overload
-    async def send_request(self, request: RequestUnion[Literal[False]]) -> ResponseUnion: ...
+    async def send_request(self, request: RequestUnion[Literal[False]], heartbeat_timeout: int = 10) -> ResponseUnion: ...
     @overload
-    async def send_request(self, request: RequestUnion[Literal[True]]) -> AsyncGenerator[ResponseUnion, None]: ...
-    async def send_request(self, request: RequestUnion[Any]) -> AsyncGenerator[ResponseUnion, None] | ResponseUnion:
+    async def send_request(self, request: RequestUnion[Literal[True]], heartbeat_timeout: int = 10) -> AsyncGenerator[ResponseUnion, None]: ...
+    async def send_request(self, request: RequestUnion[Any], heartbeat_timeout: int = config.HEARTBEAT_TIMEOUT) -> AsyncGenerator[ResponseUnion, None] | ResponseUnion:
         if not self.websocket or not self.websocket.state == websockets.State.OPEN:
             raise ConnectionError("Unable to send the message, the client is not connected.")
 
@@ -183,9 +185,11 @@ class Client:
             async def generator() -> AsyncGenerator[ResponseUnion, None]:
                 try:
                     while True:
-                        response = await queue.get()
+                        async with asyncio.timeout(heartbeat_timeout):
+                            response = await queue.get()
                         validate_response(response)
-                        yield response
+                        if not isinstance(response, HeartbeatRes):
+                            yield response
                         if not response.has_more:
                             break
                 finally:
