@@ -20,7 +20,6 @@ from utils import async_utils
 INTERRUPT_THRESHOLD = 0.5
 
 
-# TODO: Make server call more safe
 class TUI(App):
     CSS_PATH = "tui.tcss"
 
