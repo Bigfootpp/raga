@@ -10,19 +10,28 @@ from shared.messages import MessageUnion, message_adapter
 
 db_cache: dict[Path | str, Connection] = {}
 
+def _normalize_path(path: Path | str) -> Path:
+    return Path(path).resolve()
+
 async def _get_db(path: Path | str) -> Connection:
-    cached_db = db_cache.get(path)
+    if path == ":memory:":
+        key = path
+    else:
+        key = _normalize_path(path)
+
+    cached_db = db_cache.get(key)
     if cached_db:
         return cached_db
-    if path != ":memory:":
-        if isinstance(path, str):
-            path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(path)
+
+    if key != ":memory:":
+        key.parent.mkdir(parents=True, exist_ok=True)
+
+    db = await aiosqlite.connect(key)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode = WAL;")
     await db.execute("PRAGMA foreign_keys = ON;")
-    db_cache[path] = db
+
+    db_cache[key] = db
     return db
 
 
@@ -137,8 +146,6 @@ class SessionRepository:
 
         ids = []
         async with self.get_db() as db:
-            await db.execute("BEGIN TRANSACTION;")
-
             try:
                 for m in messages:
                     data_json = m.model_dump_json(exclude_none=True)
@@ -151,7 +158,6 @@ class SessionRepository:
                     ids.append(cur.lastrowid)
 
                 await db.commit()
-
             except Exception:
                 await db.rollback()
                 raise
