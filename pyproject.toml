@@ -22,4 +22,4 @@ dependencies = [
 ]
 
 [project.scripts]
-raga = "main:main"
+raga = "cli:main"
