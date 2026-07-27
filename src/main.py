@@ -19,7 +19,7 @@ def start_tui():
     app = TUI()
     app.run()
 
-
+# TODO: Implement raga setup command to init .raga/config.toml with base_url, api_key, models and auto_fetch
 def main():
     parser = argparse.ArgumentParser(
         description="Raga - Adaptive agent."
