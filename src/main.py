@@ -1,12 +1,16 @@
-import argparse
-import sys
-
+import typer
 import uvicorn
 
 from client.tui.tui import TUI
 
+app = typer.Typer(
+    name="raga",
+    help="Raga - Adaptive agent.",
+    add_completion=False
+)
 
-def start_server():
+@app.command(help="Start the agent server")
+def serve():
     uvicorn.run(
         "gateway.server:app",
         host="127.0.0.1",
@@ -14,31 +18,11 @@ def start_server():
         reload=True
     )
 
-
-def start_tui():
+@app.command(help="Launch the terminal interface")
+def tui():
     app = TUI()
     app.run()
 
 # TODO: Implement raga setup command to init .raga/config.toml with base_url, api_key, models and auto_fetch
 def main():
-    parser = argparse.ArgumentParser(
-        description="Raga - Adaptive agent."
-    )
-
-    subparsers = parser.add_subparsers(
-        dest="command", help="Available commands"
-    )
-
-    subparsers.add_parser("serve", help="Starts the agent server")
-
-    subparsers.add_parser("tui", help="Launches the terminal interface")
-
-    args = parser.parse_args()
-
-    if args.command == "serve":
-        start_server()
-    elif args.command == "tui":
-        start_tui()
-    else:
-        parser.print_help()
-        sys.exit(1)
+    app()
