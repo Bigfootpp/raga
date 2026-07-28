@@ -2,6 +2,7 @@ import typer
 import uvicorn
 
 from client.tui.tui import TUI
+from setup_wizard import run_setup
 
 app = typer.Typer(
     name="raga",
@@ -22,6 +23,10 @@ def serve():
 def tui():
     app = TUI()
     app.run()
+
+@app.command(help="Setup raga config file")
+def setup():
+    run_setup()
 
 # TODO: Implement raga setup command to init .raga/config.toml with base_url, api_key, models and auto_fetch
 def main():
